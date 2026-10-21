@@ -1,4 +1,4 @@
-import { ApiError, client, getBaseUrl, getUserId } from './client';
+import { ApiError, client, getAccessToken, getBaseUrl } from './client';
 import type { UploadProgress } from './knowledgeBase';
 import type {
 	AddFromLibraryResponse,
@@ -55,7 +55,7 @@ function uploadSkillXhr(
 		url.searchParams.set('agent_id', agentId);
 		url.searchParams.set('session_id', sessionId);
 		xhr.open('POST', url.toString(), true);
-		xhr.setRequestHeader('X-User-ID', getUserId());
+		xhr.setRequestHeader('Authorization', `Bearer ${getAccessToken()}`);
 
 		const onAbort = () => xhr.abort();
 		signal?.addEventListener('abort', onAbort, { once: true });
@@ -88,7 +88,7 @@ function uploadSkillXhr(
 		};
 		xhr.onerror = () => {
 			cleanup();
-			reject(new ApiError(0, 'Network error'));
+			reject(new ApiError(0, '网络错误。'));
 		};
 		xhr.onabort = () => {
 			cleanup();

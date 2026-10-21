@@ -12,20 +12,11 @@ export function useWorkspace(agentId: string | null, sessionId: string | null) {
 	const [error, setError] = useState<Error | null>(null);
 
 	const refetch = useCallback(async () => {
-		if (!agentId || !sessionId) {
-			setMcps([]);
-			return;
-		}
-		setLoading(true);
+		// MCP disabled for this deployment — do not hit /workspace/mcp.
+		setMcps([]);
+		setLoading(false);
 		setError(null);
-		try {
-			setMcps(await workspaceApi.mcp.list(agentId, sessionId));
-		} catch (e) {
-			setError(e as Error);
-		} finally {
-			setLoading(false);
-		}
-	}, [agentId, sessionId]);
+	}, []);
 
 	const refetchSkills = useCallback(async () => {
 		if (!agentId || !sessionId) {
@@ -49,53 +40,17 @@ export function useWorkspace(agentId: string | null, sessionId: string | null) {
 		refetchSkills();
 	}, [refetchSkills]);
 
-	const addMcps = useCallback(
-		async (clients: MCPClient[]) => {
-			if (!agentId || !sessionId) throw new Error('No agent/session selected');
-			const existingNames = new Set(mcps.map((m) => m.name));
-			for (const mcp of clients) {
-				if (existingNames.has(mcp.name)) {
-					throw new Error(`MCP server "${mcp.name}" already exists in this workspace.`);
-				}
-			}
-			const batchNames = new Set<string>();
-			for (const mcp of clients) {
-				if (batchNames.has(mcp.name)) {
-					throw new Error(`Duplicate MCP server name "${mcp.name}" in configuration.`);
-				}
-				batchNames.add(mcp.name);
-			}
-			for (const mcp of clients) {
-				await workspaceApi.mcp.add(agentId, sessionId, mcp);
-			}
-			await refetch();
-		},
-		[agentId, sessionId, mcps, refetch],
-	);
+	const addMcps = useCallback(async (_clients: MCPClient[]) => {
+		throw new Error('MCP is disabled on this deployment.');
+	}, []);
 
-	const addMcpsFromLibrary = useCallback(
-		async (mcpIds: string[]) => {
-			if (!agentId || !sessionId) throw new Error('No agent/session selected');
-			const result = await workspaceApi.mcp.addFromLibrary(agentId, sessionId, mcpIds);
-			await refetch();
-			// Reported per MCP, so a partial success is still a success for
-			// what landed; surface only what did not.
-			const failures = Object.entries(result.failed);
-			if (failures.length > 0) {
-				throw new Error(failures.map(([name, why]) => `${name}: ${why}`).join('\n'));
-			}
-		},
-		[agentId, sessionId, refetch],
-	);
+	const addMcpsFromLibrary = useCallback(async (_mcpIds: string[]) => {
+		throw new Error('MCP is disabled on this deployment.');
+	}, []);
 
-	const removeMcp = useCallback(
-		async (mcpName: string) => {
-			if (!agentId || !sessionId) throw new Error('No agent/session selected');
-			await workspaceApi.mcp.remove(mcpName, agentId, sessionId);
-			await refetch();
-		},
-		[agentId, sessionId, refetch],
-	);
+	const removeMcp = useCallback(async (_mcpName: string) => {
+		throw new Error('MCP is disabled on this deployment.');
+	}, []);
 
 	const uploadSkill = useCallback(
 		async (files: File[], options: UploadOptions = {}) => {

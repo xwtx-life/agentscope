@@ -207,7 +207,7 @@ export function UploadProvider({ children }: UploadProviderProps) {
 			dispatch({
 				type: 'UPLOAD_FAILED',
 				taskId: task.taskId,
-				error: 'Internal error: missing file payload.',
+				error: '内部错误：缺少文件数据。',
 			});
 			return;
 		}
@@ -240,7 +240,7 @@ export function UploadProvider({ children }: UploadProviderProps) {
 					// Already handled by the cancel() path.
 					return;
 				}
-				const message = err instanceof Error ? err.message : 'Upload failed.';
+				const message = err instanceof Error ? err.message : '上传失败。';
 				dispatch({
 					type: 'UPLOAD_FAILED',
 					taskId: task.taskId,

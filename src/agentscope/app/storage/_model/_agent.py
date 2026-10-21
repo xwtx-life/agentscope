@@ -113,7 +113,7 @@ class AgentData(BaseModel):
     )
 
     system_prompt: str = Field(
-        default="You're a helpful assistant.",
+        default="你是一个有帮助的助手。",
         description="The system prompt for the agent.",
         title="System Prompt",
         # Hint for schema-driven UI renderers; see ``ContextConfig`` for

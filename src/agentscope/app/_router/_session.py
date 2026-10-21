@@ -52,7 +52,8 @@ from ..storage import (
     TeamRecord,
 )
 from ...message import ToolCallState
-from ...state import ToolContext
+from ...permission import PermissionContext, PermissionMode
+from ...state import AgentState, ToolContext
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ...event import CustomEvent
 from ..workspace_manager import WorkspaceManagerBase
@@ -370,6 +371,13 @@ async def create_session(
             naming=SessionNaming(auto=body.name is None),
             **({"name": body.name} if body.name is not None else {}),
         ),
+        # Interactive chat sessions default to bypass so tools run
+        # without per-action prompts; the UI can still switch modes.
+        state=AgentState(
+            permission_context=PermissionContext(
+                mode=PermissionMode.BYPASS,
+            ),
+        ),
     )
     return CreateSessionResponse(session_id=session_record.id)
 
@@ -508,10 +516,7 @@ async def update_session(
     if await message_bus.is_locked(MessageBusKeys.session_lock(session_id)):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Cannot modify session configuration while the session "
-                "is running."
-            ),
+            detail="会话正在运行，无法修改配置。请等待回复结束后再试。",
         )
 
     await _ensure_credential_exists(access, user_id, body.chat_model_config)

@@ -39,6 +39,13 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	const [values, setValues] = useState<AgentFormValues | null>(null);
 	const [errorMsg, setErrorMsg] = useState('');
 
+	// Shared agents are usable but not editable — never open the form.
+	useEffect(() => {
+		if (open && !agent.editable) {
+			onOpenChange(false);
+		}
+	}, [open, agent.editable, onOpenChange]);
+
 	useEffect(() => {
 		if (!open || !schema) {
 			if (!open) {
@@ -51,14 +58,25 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 		// any unset fields fall back to defaults rather than empty.
 		const base = defaultAgentFormValues(schema);
 		const d = agent.data;
+		const systemPrompt =
+			d.system_prompt === "You're a helpful assistant."
+				? '你是一个有帮助的助手。'
+				: d.system_prompt;
+		const react = { ...base.react_config, ...d.chat_config.react_config };
+		if (
+			react.interruption_message ===
+			'I notice the interruption. How can I help you?'
+		) {
+			react.interruption_message = '我注意到你已中断。还有什么可以帮你的吗？';
+		}
 		setValues({
 			identity: {
 				...base.identity,
 				name: d.name,
-				system_prompt: d.system_prompt,
+				system_prompt: systemPrompt,
 			},
 			context_config: { ...base.context_config, ...d.chat_config.context_config },
-			react_config: { ...base.react_config, ...d.chat_config.react_config },
+			react_config: react,
 			invite_config: { ...base.invite_config, ...d.chat_config.invite_config },
 		});
 		setErrorMsg('');

@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
 """Model service: builds a ChatModelBase from stored credential + config."""
+import inspect
+
 from ._access import ResourceAccessService
 from ..storage import ChatModelConfig, RealtimeModelConfig
 from ...credential import CredentialFactory
 from ...model import ChatModelBase
 from ...realtime import RealtimeModelBase
 from ..._logging import logger
+
+# OpenAI SDK default timeout is ~10 minutes, so a hung SiliconFlow /
+# NewAPI call looks like "spin forever with no error". Cap compatible
+# gateways so the UI can surface a timeout instead.
+_COMPAT_GATEWAY_TIMEOUT_SECS = 90.0
 
 
 async def get_model(
@@ -52,11 +59,20 @@ async def get_model(
         if config.parameters
         else None
     )
-    model = model_cls(
-        credential=credential,
-        model=config.model,
-        parameters=parameters,
-    )
+    init_kwargs: dict = {
+        "credential": credential,
+        "model": config.model,
+        "parameters": parameters,
+    }
+    base_url = getattr(credential, "base_url", None)
+    if (
+        base_url
+        and "client_kwargs" in inspect.signature(model_cls.__init__).parameters
+    ):
+        init_kwargs["client_kwargs"] = {
+            "timeout": _COMPAT_GATEWAY_TIMEOUT_SECS,
+        }
+    model = model_cls(**init_kwargs)
 
     # Override the context size and the formatter's input types with the
     # built-in model card's when one matches; custom models have no card,

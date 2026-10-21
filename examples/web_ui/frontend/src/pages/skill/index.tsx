@@ -1,13 +1,27 @@
-import { Blocks, Check, Download, Plug, Trash2, TriangleAlert } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import {
+	Blocks,
+	Check,
+	Download,
+	FolderUp,
+	Plug,
+	Settings,
+	ShieldCheck,
+	Trash2,
+	TriangleAlert,
+} from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 
 import type { HubInfo, SkillCard, SkillView } from '@/api';
-import { hubApi, skillApi } from '@/api';
+import { hubApi, skillApi, skillSubmissionApi } from '@/api';
 import { ApiError } from '@/api/client';
+import { SkillHubSettingsDialog } from '@/components/dialog/SkillHubSettingsDialog.tsx';
 import { ResourceDetailDrawer } from '@/components/drawer/ResourceDetailDrawer.tsx';
 import { LoadMore } from '@/components/hub/LoadMore.tsx';
 import { ResourcePanel } from '@/components/hub/ResourcePanel.tsx';
+import { SkillReviewPanel } from '@/components/panel/SkillReviewPanel.tsx';
+import { SkillSubmissionPanel } from '@/components/panel/SkillSubmissionPanel.tsx';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Button } from '@/components/ui/button.tsx';
@@ -470,6 +484,8 @@ function MinePanel({ skills, loading, onRemove }: MinePanelProps) {
 	);
 }
 
+type SkillMainTab = 'mine' | 'review' | string;
+
 export function SkillHubPage() {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
@@ -480,9 +496,72 @@ export function SkillHubPage() {
 	// as already installed, and the "mine" view to list them.
 	const { skills, loading: skillsLoading, refetch: refetchSkills, remove } = useSkills();
 	const installedNames = new Set(skills.map((skill) => skill.name));
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [mainTab, setMainTab] = useState<SkillMainTab>('mine');
+	const [uploading, setUploading] = useState(false);
+	const uploadInput = useRef<HTMLInputElement>(null);
+	const isAdmin = localStorage.getItem('user_role') === 'admin';
+	const activeHubId = mainTab === 'mine' || mainTab === 'review' ? undefined : hubId;
+	const showReview = mainTab === 'review';
+	const showMine = !hubId && mainTab !== 'review';
+
+	const handleUpload = async (files: File[]) => {
+		if (!files.length) return;
+		setUploading(true);
+		try {
+			await skillSubmissionApi.submit(files);
+			toast.success(t('skill.submission.upload'));
+			setMainTab('review');
+			navigate('/skill', { replace: true });
+		} catch (caught) {
+			toast.error(
+				caught instanceof ApiError ? caught.detail : t('skill.submission.uploadFailed'),
+			);
+		} finally {
+			setUploading(false);
+		}
+	};
 
 	return (
-		<div className="flex size-full p-2 gap-2">
+		<div className="relative flex size-full gap-2 p-2">
+			<div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+				<input
+					ref={uploadInput}
+					type="file"
+					className="hidden"
+					{...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+					onChange={(event) => {
+						void handleUpload(Array.from(event.target.files ?? []));
+						event.target.value = '';
+					}}
+				/>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					disabled={uploading}
+					onClick={() => uploadInput.current?.click()}
+				>
+					{uploading ? <Spinner /> : <FolderUp className="size-3.5" />}
+					{t('skill.uploadSkill')}
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					title={t('skill.settingsTitle')}
+					onClick={() => setSettingsOpen(true)}
+				>
+					<Settings className="size-4" />
+				</Button>
+			</div>
+			<SkillHubSettingsDialog
+				open={settingsOpen}
+				onOpenChange={setSettingsOpen}
+				onSaved={() => {
+					void refetch();
+				}}
+			/>
 			<Sidebar collapsible="none" className="rounded-[22px]">
 				<SidebarHeader className="flex flex-col p-[20px_18px_14px] gap-y-1">
 					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
@@ -497,8 +576,11 @@ export function SkillHubPage() {
 							<SidebarMenu>
 								<SidebarMenuItem>
 									<SidebarMenuButton
-										isActive={!hubId}
-										onClick={() => navigate('/skill')}
+										isActive={showMine}
+										onClick={() => {
+											setMainTab('mine');
+											navigate('/skill');
+										}}
 									>
 										<Plug />
 										<span className="min-w-0 flex-1 truncate">
@@ -506,6 +588,20 @@ export function SkillHubPage() {
 										</span>
 										<span className="font-mono text-[10px] text-text-data">
 											{skills.length}
+										</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										isActive={showReview}
+										onClick={() => {
+											setMainTab('review');
+											navigate('/skill');
+										}}
+									>
+										<ShieldCheck />
+										<span className="min-w-0 flex-1 truncate">
+											{t('skill.reviewCenter')}
 										</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
@@ -564,8 +660,11 @@ export function SkillHubPage() {
 									{hubs.map((hub) => (
 										<SidebarMenuItem key={hub.hub_id}>
 											<SidebarMenuButton
-												isActive={hubId === hub.hub_id}
-												onClick={() => navigate(`/skill/${hub.hub_id}`)}
+												isActive={activeHubId === hub.hub_id}
+												onClick={() => {
+													setMainTab(hub.hub_id);
+													navigate(`/skill/${hub.hub_id}`);
+												}}
 												title={hub.description}
 											>
 												<Avatar className="size-4 rounded-sm">
@@ -594,7 +693,15 @@ export function SkillHubPage() {
 			</Sidebar>
 
 			<main className="flex-1 min-w-0 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
-				{hubId ? (
+				{showReview ? (
+					<div className="flex h-full flex-col gap-4 overflow-auto p-4">
+						{isAdmin ? (
+							<SkillReviewPanel />
+						) : (
+							<SkillSubmissionPanel canSubmit />
+						)}
+					</div>
+				) : hubId ? (
 					// Remount on hub change so the panel's query box resets.
 					<HubPanel
 						key={hubId}

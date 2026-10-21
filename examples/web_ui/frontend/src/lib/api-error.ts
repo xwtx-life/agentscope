@@ -1,4 +1,7 @@
 import { ApiError } from '@/api/client';
+import { localizeApiDetail } from '@/lib/localize-api-detail';
+
+export { localizeApiDetail } from '@/lib/localize-api-detail';
 
 /**
  * FastAPI 422 responses put a pydantic ``.errors()`` array in ``detail``.
@@ -16,7 +19,7 @@ export function formatApiErrorForAlert(err: unknown): string {
 				const msgs = parsed
 					.map((item) =>
 						item && typeof item === 'object' && 'msg' in item
-							? String((item as { msg: unknown }).msg)
+							? localizeApiDetail(String((item as { msg: unknown }).msg))
 							: null,
 					)
 					.filter((m): m is string => !!m);
@@ -25,8 +28,8 @@ export function formatApiErrorForAlert(err: unknown): string {
 		} catch {
 			// not JSON — fall through to raw detail
 		}
-		return detail;
+		return localizeApiDetail(detail);
 	}
-	if (err instanceof Error) return err.message;
-	return String(err);
+	if (err instanceof Error) return localizeApiDetail(err.message);
+	return localizeApiDetail(String(err));
 }

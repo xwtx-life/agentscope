@@ -148,10 +148,9 @@ export const avatarTint = (seed: string): { backgroundColor: string; color: stri
 		hash = Math.imul(hash, 0x01000193);
 	}
 	const hue = Math.abs(hash) % 360;
-	// Verified across all 360 hues: 7.16:1 worst case (WCAG AAA), and the
-	// chroma is low enough that nothing meaningfully leaves sRGB.
+	// hsl works on Chrome 106+; oklch needs Chrome 111+.
 	return {
-		backgroundColor: `oklch(0.94 0.03 ${hue})`,
-		color: `oklch(0.41 0.075 ${hue})`,
+		backgroundColor: `hsl(${hue} 35% 92%)`,
+		color: `hsl(${hue} 30% 32%)`,
 	};
 };

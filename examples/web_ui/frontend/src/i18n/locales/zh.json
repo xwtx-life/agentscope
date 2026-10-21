@@ -24,8 +24,8 @@
 		"name": "名称",
 		"no": "否",
 		"noData": "暂无数据",
-		"readOnly": "只读",
-		"readOnlyTooltip": "该资源以只读方式共享给你，编辑和删除均被禁用。",
+		"readOnly": "共享",
+		"readOnlyTooltip": "所有人可用；仅创建者可编辑或删除。",
 		"completed": "已完成",
 		"failed": "已失败",
 		"running": "运行中",
@@ -36,6 +36,8 @@
 		"settings": "设置",
 		"switchToZh": "切换为中文",
 		"switchToEn": "Switch to English",
+		"expandSidebar": "展开侧栏",
+		"collapseSidebar": "收起侧栏",
 		"team": "团队",
 		"uploading": "上传中",
 		"leader": "队长",
@@ -151,8 +153,8 @@
 			"selectPlaceholder": "选择智能体",
 			"emptyTitle": "暂无智能体",
 			"emptyDescription": "创建一个智能体开始使用。",
-			"groupYours": "我的",
-			"groupShared": "共享给我"
+			"groupYours": "我创建的",
+			"groupShared": "共享智能体"
 		},
 		"session": {
 			"label": "会话",
@@ -176,39 +178,60 @@
 				"placeholder": "我的智能体"
 			},
 			"system-prompt": {
-				"label": "系统提示词"
+				"label": "系统提示词",
+				"placeholder": "你是一个有帮助的助手。"
 			}
 		},
 		"context-config": {
 			"legend": "上下文配置",
 			"description": "控制上下文窗口的管理和压缩方式。",
 			"trigger-ratio": {
-				"label": "触发比例"
+				"label": "触发比例",
+				"description": "上下文占用达到模型上限的该比例时触发压缩（最大 0.9）。"
 			},
 			"reserve-ratio": {
-				"label": "保留比例"
+				"label": "保留比例",
+				"description": "压缩后保留的上下文比例，应小于触发比例。"
+			},
+			"context-buffer-ratio": {
+				"label": "上下文缓冲",
+				"description": "触发压缩前的缓冲区间；开启压缩工具时可提前主动压缩。"
 			},
 			"tool-result-limit": {
-				"label": "工具结果限制"
+				"label": "工具结果限制",
+				"description": "工具结果的最大 token 数，超出将被截断。"
 			},
 			"compression-prompt": {
-				"label": "压缩提示词"
+				"label": "压缩提示词",
+				"description": "引导模型生成可用于后续续写的压缩摘要。"
 			},
 			"summary-template": {
-				"label": "摘要模板"
+				"label": "摘要模板",
+				"description": "向智能体展示压缩摘要的字符串模板。"
+			},
+			"compression-fallback-to-truncation": {
+				"label": "压缩失败则截断",
+				"description": "无法生成压缩摘要时，是否回退为截断最早上下文。"
+			},
+			"compression-tool-enabled": {
+				"label": "启用压缩工具",
+				"description": "是否向智能体暴露上下文压缩工具，供其主动调用。"
 			},
 			"max-image-num": {
-				"label": "最大图片数"
+				"label": "最大图片数",
+				"description": "上下文中保留的最大图片数量，超出将移除最早的图片。"
 			}
 		},
 		"react-config": {
-			"legend": "ReAct 配置",
-			"description": "控制推理和行动循环的行为。",
+			"legend": "推理行动配置",
+			"description": "控制推理与行动循环的行为。",
 			"max-iters": {
-				"label": "最大迭代次数"
+				"label": "最大迭代次数",
+				"description": "单次回复中推理—行动循环的最大轮数。"
 			},
 			"stop-on-reject": {
-				"label": "拒绝时停止"
+				"label": "拒绝时停止",
+				"description": "工具调用被拒绝时是否停止继续推理。"
 			},
 			"structured-output-grace-iters": {
 				"label": "结构化输出宽限轮数",
@@ -216,22 +239,25 @@
 			},
 			"interruption-message": {
 				"label": "中断回复",
+				"placeholder": "我注意到你已中断。还有什么可以帮你的吗？",
 				"description": "用户中断回复时，智能体给出的回复内容。"
 			},
 			"interruption-raise-cancelled-error": {
-				"label": "抛出 CancelledError",
-				"description": "处理完中断后重新抛出 asyncio.CancelledError，而不是将其吞掉。"
+				"label": "中断后抛出取消错误",
+				"description": "处理完中断后是否重新抛出取消错误，而不是吞掉。"
 			}
 		},
 		"invite-config": {
 			"legend": "邀请配置",
-			"description": "控制此智能体是否可被其他智能体通过 AgentInvite 邀请。",
+			"description": "控制此智能体是否可被其他智能体邀请加入团队。",
 			"invitable": {
-				"label": "允许被邀请"
+				"label": "允许被邀请",
+				"description": "开启后，其他智能体可通过邀请工具借用本智能体。"
 			},
 			"invite-description": {
 				"label": "邀请说明",
-				"placeholder": "简要描述此智能体的专长；允许被邀请时必填。"
+				"placeholder": "简要描述此智能体的专长；允许被邀请时必填。",
+				"description": "展示给邀请方的能力说明，用于判断是否邀请。"
 			}
 		}
 	},
@@ -333,19 +359,30 @@
 		"availableModels": "可用模型",
 		"noModels": "暂无可用模型",
 		"noModelsDescription": "该提供商未返回任何模型。",
+		"noModelsCustomHint": "兼容接口默认不带模型列表。请点击「添加自定义模型」，填入硅基流动 / NewAPI 的完整模型 ID。",
 		"deleteEntity": "凭证",
 		"subtitle": "模型 API 授权配置",
 		"configured": "已配置",
 		"addProvider": "添加凭证",
 		"reasoning": "推理模型",
 		"realtime": "实时",
+		"customTag": "自定义",
+		"addCustomModel": "添加自定义模型",
+		"addCustomModelTitle": "添加自定义模型",
+		"addCustomModelDescription": "用于硅基流动、NewAPI 等 OpenAI 兼容接口。填写平台上的完整模型 ID。",
+		"customModelId": "模型 ID",
+		"customModelPlaceholder": "例如 deepseek-ai/DeepSeek-V3",
+		"customModelLabel": "显示名称（可选）",
+		"customModelLabelPlaceholder": "例如 DeepSeek V3",
+		"customAdded": "已添加自定义模型",
+		"customRemoved": "已删除自定义模型",
 		"table": {
 			"model": "模型",
 			"context": "上下文",
 			"maxOutput": "最大输出",
 			"accepts": "输入",
 			"outputs": "输出",
-			"legend": "上下文与最大输出均以 token 计。REASONING 表示模型支持深度思考。",
+			"legend": "上下文与最大输出均以 token 计。自定义模型用于硅基流动 / NewAPI 等兼容接口。",
 			"dimensions": "维度"
 		}
 	},
@@ -442,7 +479,12 @@
 		},
 		"addCredential": "添加凭证",
 		"clear": "清除选择",
-		"noFallback": "无兜底模型"
+		"noFallback": "无兜底模型",
+		"customModel": "自定义模型 ID…",
+		"customModelTitle": "自定义模型 ID",
+		"customModelDescription": "用于硅基流动、NewAPI 等 OpenAI 兼容接口。将按原样发送给「{{credential}}」。",
+		"customModelId": "模型 ID",
+		"customModelPlaceholder": "例如 deepseek-ai/DeepSeek-V3"
 	},
 	"realtime": {
 		"selectModel": "语音模型",
@@ -490,6 +532,11 @@
 		"placeholder": "选择权限模式",
 		"trigger-tooltip": "权限模式",
 		"label": "权限模式",
+		"default": "默认",
+		"accept_edits": "接受编辑",
+		"explore": "探索",
+		"bypass": "绕过",
+		"dont_ask": "不询问",
 		"default-tooltip": "默认模式：所有操作需要明确授权（最安全）",
 		"accept_edits-tooltip": "自动允许工作目录内的文件读写及文件系统命令（mkdir、rm、mv 等），其他操作按正常规则处理",
 		"explore-tooltip": "只读模式：允许读取/Grep/Glob 工具，禁止写入/编辑/Bash 等修改操作",
@@ -570,19 +617,109 @@
 	},
 	"setup": {
 		"title": "连接到服务器",
-		"description": "请输入服务器地址和用户名以开始使用。",
+		"description": "请输入 AgentScope 服务地址以继续登录。",
 		"serverUrl": "服务器地址",
-		"serverUrlPlaceholder": "https://...",
-		"username": "用户名",
-		"usernamePlaceholder": "请输入用户名",
-		"submit": "开始使用",
+		"serverUrlPlaceholder": "http://localhost:8000",
+		"submit": "继续",
 		"checking": "连接中...",
 		"errorUnreachable": "无法连接到该服务器。请检查地址是否正确、服务是否已启动，以及是否允许跨域请求。",
 		"errorTimeout": "服务器已建立连接，但在超时时间内没有响应。可能负载过高或启动卡住了。",
 		"errorNotAgentScope": "地址可以访问，但它不是 AgentScope 服务。请检查地址，或升级尚未提供健康检查接口的旧版本后端。",
-		"errorUnauthorized": "服务器拒绝了该用户名，请填写有效的用户名。",
 		"errorNotReady": "服务器可以连接，但尚未就绪。以下子系统启动失败：",
-		"hint": "此应用仅提供前端服务，所有数据均来自填写的服务器地址，用户名仅用于服务端鉴权。"
+		"hint": "此应用仅提供前端。数据与账号均由你填写的服务器地址提供；下一步将使用用户名和密码登录。"
+	},
+	"profile": {
+		"title": "个人中心",
+		"description": "查看当前登录账号的基本信息。"
+	},
+	"auth": {
+		"loginTitle": "登录",
+		"loginDescription": "使用与 v0.1 相同的邮箱和密码登录。",
+		"registerTitle": "注册",
+		"registerDescription": "使用邮箱注册并创建组织，你将成为该组织的管理员。",
+		"email": "邮箱",
+		"emailOrUsername": "邮箱",
+		"emailPlaceholder": "请输入邮箱",
+		"loginIdentityPlaceholder": "请输入邮箱",
+		"emailHint": "请使用有效邮箱；现有 v0.1 账号可直接在此登录。",
+		"displayName": "显示名称",
+		"displayNamePlaceholder": "可选显示名称",
+		"username": "用户名",
+		"organization": "组织",
+		"organizationPlaceholder": "例如：研发部",
+		"organizationHint": "将新建一个组织，你成为该组织管理员。",
+		"organizationRequired": "请填写组织名称。",
+		"password": "密码",
+		"confirmPassword": "确认密码",
+		"department": "组织",
+		"departmentOptional": "选择或新建组织",
+		"departmentHint": "组织对应 v0.1 的 tenant。",
+		"departmentRequired": "请填写组织名称。",
+		"departmentRequiredPlaceholder": "请选择组织",
+		"departmentRequiredHint": "注册必须填写组织。",
+		"noDepartment": "不选择组织",
+		"noOrganization": "不选择组织",
+		"createDepartment": "新建组织…",
+		"newDepartmentName": "新组织名称",
+		"newDepartmentPlaceholder": "例如：研发部",
+		"login": "登录",
+		"loggingIn": "登录中…",
+		"register": "注册",
+		"registering": "注册中…",
+		"logout": "退出登录",
+		"noAccount": "还没有账号？",
+		"hasAccount": "已有账号？",
+		"backToLogin": "返回登录",
+		"changeServer": "更换服务器",
+		"loginFailed": "登录失败",
+		"registerFailed": "注册失败",
+		"passwordMismatch": "两次输入的密码不一致。",
+		"passwordTooShort": "密码至少 6 位。"
+	},
+	"users": {
+		"title": "用户管理",
+		"description": "创建账号并分配角色与组织。",
+		"listTitle": "用户",
+		"listHint": "管理员可直接创建用户（无需邀请），并调整角色与组织归属。",
+		"search": "查询",
+		"reset": "重置",
+		"searchUsernamePlaceholder": "按邮箱筛选",
+		"searchEmailPlaceholder": "按邮箱筛选",
+		"allRoles": "全部角色",
+		"allDepartments": "全部组织",
+		"allOrganizations": "全部组织",
+		"add": "新增",
+		"addTitle": "新增用户",
+		"addHint": "填写邮箱、密码、组织和角色，无需邀请码。",
+		"usernamePlaceholder": "请输入邮箱",
+		"emailPlaceholder": "请输入邮箱",
+		"organizationPlaceholder": "请选择组织",
+		"createUsernamePasswordRequired": "请填写邮箱和密码。",
+		"createEmailPasswordRequired": "请填写邮箱和密码。",
+		"createOrganizationRequired": "请选择组织。",
+		"changePassword": "修改密码",
+		"changePasswordTitle": "修改密码",
+		"changePasswordHint": "为用户「{{username}}」设置新密码。",
+		"newPassword": "新密码",
+		"confirmPassword": "确认密码",
+		"passwordUpdated": "密码已更新",
+		"delete": "删除用户",
+		"deleteConfirm": "确认删除用户「{{email}}」？此操作不可撤销。",
+		"deleted": "用户已删除",
+		"cannotDeleteSelf": "不能删除当前登录账号"
+	},
+	"admin": {
+		"title": "组织管理",
+		"description": "维护组织（对应 v0.1 tenant）。",
+		"departments": "组织",
+		"departmentsHint": "注册时会新建组织；管理员也可在此继续添加。",
+		"descriptionField": "说明",
+		"role": "角色",
+		"roleAdmin": "管理员",
+		"roleUser": "普通用户",
+		"saved": "已保存",
+		"deleteDepartmentConfirm": "确认删除组织「{{name}}」？组织内成员将被解除归属，此操作不可撤销。",
+		"departmentDeleted": "组织已删除"
 	},
 	"tour": {
 		"trigger": "新手引导",
@@ -860,7 +997,69 @@
 		"noReadme": "该技能没有提供 SKILL.md 正文。",
 		"loadFailedTitle": "无法连接服务",
 		"loadFailedDescription": "请检查服务地址，以及服务是否已启动。",
-		"retry": "重试"
+		"retry": "重试",
+		"settingsTitle": "SkillHub 设置",
+		"settingsDescription": "配置 AgentScope 对接的 SkillHub API 地址与令牌。",
+		"settingsUrl": "AGENTSCOPE_SKILLHUB_URL",
+		"settingsUrlHint": "SkillHub API 根地址，需能响应 GET /api/v1/skills。",
+		"settingsToken": "AGENTSCOPE_SKILLHUB_TOKEN",
+		"settingsTokenPlaceholder": "可选 API 令牌",
+		"settingsTokenKeep": "留空则保持已配置的令牌",
+		"settingsTokenConfigured": "已配置令牌；留空保存可保持不变。",
+		"settingsTokenHint": "可选。浏览公开技能可不填；私有技能需要令牌。",
+		"settingsAdminOnly": "仅管理员可修改连接设置。",
+		"settingsSaved": "SkillHub 设置已保存",
+		"reviewCenter": "技能审核中心",
+		"uploadSkill": "上传技能",
+		"submission": {
+			"title": "技能提交",
+			"description": "上传技能文件夹后先进行安全扫描，通过后由管理员审批发布到 SkillHub。",
+			"upload": "提交技能",
+			"empty": "暂无提交记录。",
+			"loadFailed": "无法加载技能提交记录。",
+			"uploadFailed": "技能上传失败。",
+			"versionPending": "版本待解析",
+			"status": {
+				"scanning": "扫描中",
+				"scan_failed": "扫描失败",
+				"pending_approval": "待审批",
+				"rejected": "已驳回",
+				"approved": "已通过",
+				"publishing": "发布中",
+				"publish_failed": "发布失败",
+				"published": "已发布"
+			}
+		},
+		"review": {
+			"title": "技能审核",
+			"description": "审核租户提交的技能，审批通过后将发布到 SkillHub。",
+			"adminLabel": "去审核",
+			"pendingBannerTitle": "有 {{count}} 个技能待审核",
+			"pendingBannerDescription": "在管理后台审批或驳回提交。",
+			"filterAll": "全部状态",
+			"submitter": "提交人",
+			"reviewer": "审核人",
+			"reviewedAt": "审核时间",
+			"scanPassed": "扫描通过",
+			"scanFailed": "扫描未通过",
+			"scanFindings": "扫描发现",
+			"approve": "审批通过",
+			"reject": "驳回",
+			"retry": "重新发布",
+			"approveSuccess": "已审批通过。",
+			"rejectSuccess": "已驳回。",
+			"approveFailed": "审批失败。",
+			"rejectFailed": "驳回失败。",
+			"loadFailed": "无法加载待审核的技能。",
+			"empty": "当前筛选下没有提交记录。",
+			"rejectDialogTitle": "驳回技能",
+			"rejectDialogDescription": "请说明驳回原因，提交者将能看到该原因。",
+			"rejectReasonPlaceholder": "例如：技能描述缺失、存在可疑脚本……",
+			"rejectReasonRequired": "请填写驳回原因",
+			"publishFailedHint": "上次发布失败",
+			"rejectionReasonLabel": "驳回原因",
+			"lastErrorLabel": "错误信息"
+		}
 	},
 	"agent-menu": {
 		"settings": "设置",

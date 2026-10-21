@@ -3,18 +3,18 @@ import {
 	BotMessageSquare,
 	Cable,
 	Calendars,
-	Compass,
 	KeyRound,
-	Languages,
 	LibraryBig,
-	UserRound,
+	LogOut,
+	Shield,
+	Users,
 } from 'lucide-react';
-import { useOnborda } from 'onborda';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+import { authApi } from '@/api';
+import { clearSession } from '@/api/client';
 import AgentScope from '@/assets/images/agentscope_mono.svg?react';
-import MCPSvg from '@/assets/images/mcp.svg?react';
-import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
 	Sidebar,
 	SidebarContent,
@@ -26,125 +26,121 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import i18n from '@/i18n';
 import { useTranslation } from '@/i18n/useI18n';
+import { avatarTint } from '@/utils/common';
+
+function userInitials(username: string): string {
+	const trimmed = username.trim();
+	if (!trimmed) return '?';
+	return trimmed.slice(0, 2).toUpperCase();
+}
 
 export function AppSidebar() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { t } = useTranslation();
-	const { startOnborda } = useOnborda();
+	const role = localStorage.getItem('user_role');
+	const username = localStorage.getItem('username') || '';
+	const isAdmin = role === 'admin';
 
-	const handleStartTour = () => {
-		if (!location.pathname.startsWith('/chat')) {
-			// Page not mounted yet — leave a flag, navigate, and let the
-			// ChatTourController auto-trigger after ChatPage mounts.
-			sessionStorage.setItem('force_tour', '1');
-			navigate('/chat');
-		} else {
-			startOnborda(CHAT_TOUR_NAME);
-		}
+	const handleLogout = async () => {
+		await authApi.logout();
+		clearSession();
+		navigate('/login', { replace: true });
 	};
 
-	const handleToggleLanguage = () => {
-		const next = i18n.language.startsWith('zh') ? 'en' : 'zh';
-		i18n.changeLanguage(next);
-	};
+	const items = [
+		{
+			key: 'chat',
+			label: t('common.chat'),
+			icon: <BotMessageSquare />,
+			active:
+				location.pathname === '/chat' || location.pathname.startsWith('/chat/'),
+			onClick: () => navigate('/chat'),
+		},
+		{
+			key: 'schedule',
+			label: t('common.schedule'),
+			icon: <Calendars />,
+			active: location.pathname === '/schedule',
+			onClick: () => navigate('/schedule'),
+		},
+		{
+			key: 'channel',
+			label: t('common.channel'),
+			icon: <Cable />,
+			active: location.pathname === '/channel',
+			onClick: () => navigate('/channel'),
+		},
+		{
+			key: 'credential',
+			label: t('common.credential'),
+			icon: <KeyRound />,
+			active: location.pathname === '/credential',
+			onClick: () => navigate('/credential'),
+		},
+		{
+			key: 'skill',
+			label: t('common.skill-hub'),
+			icon: <BookText />,
+			active: location.pathname.startsWith('/skill'),
+			onClick: () => navigate('/skill'),
+		},
+		{
+			key: 'knowledge',
+			label: t('common.knowledge'),
+			icon: <LibraryBig />,
+			active: location.pathname === '/knowledge',
+			onClick: () => navigate('/knowledge'),
+		},
+		...(isAdmin
+			? [
+					{
+						key: 'users',
+						label: t('users.title'),
+						icon: <Users />,
+						active: location.pathname === '/users',
+						onClick: () => navigate('/users'),
+					},
+					{
+						key: 'admin',
+						label: t('admin.title'),
+						icon: <Shield />,
+						active: location.pathname === '/admin',
+						onClick: () => navigate('/admin'),
+					},
+				]
+			: []),
+	];
 
 	return (
 		<Sidebar
 			collapsible="none"
-			className="w-[calc(var(--sidebar-width-icon)+1px)]! bg-transparent"
+			className="w-44 shrink-0 border-r border-sidebar-border bg-sidebar"
 		>
 			<SidebarHeader>
-				<div className="flex items-center justify-center size-8 mt-2 rounded-full bg-primary">
-					<AgentScope className="size-5 items-center justify-center rounded-lg text-primary-foreground" />
+				<div className="mt-1 flex items-center gap-2 px-1">
+					<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary">
+						<AgentScope className="size-5 text-primary-foreground" />
+					</div>
+					<span className="truncate text-sm font-semibold">AgentScope</span>
 				</div>
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>
 					<SidebarGroupContent>
 						<SidebarMenu>
-							<SidebarMenuItem key={'chat'}>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.chat'), hidden: false }}
-									isActive={
-										location.pathname === '/chat' ||
-										location.pathname.startsWith('/chat/')
-									}
-									onClick={() => navigate('/chat')}
-									className="justify-center"
-								>
-									<BotMessageSquare />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.schedule'), hidden: false }}
-									isActive={location.pathname === '/schedule'}
-									onClick={() => navigate('/schedule')}
-									className="justify-center"
-								>
-									<Calendars />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.channel'), hidden: false }}
-									isActive={location.pathname === '/channel'}
-									onClick={() => navigate('/channel')}
-									className="px-2"
-								>
-									<Cable />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
-					</SidebarGroupContent>
-				</SidebarGroup>
-				<SidebarGroup>
-					<SidebarGroupContent>
-						<SidebarMenu>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.credential'), hidden: false }}
-									isActive={location.pathname === '/credential'}
-									onClick={() => navigate('/credential')}
-									className="justify-center"
-								>
-									<KeyRound />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.mcp-hub'), hidden: false }}
-									// Stays lit while browsing a hub under /mcp/:hubId.
-									isActive={location.pathname.startsWith('/mcp')}
-									onClick={() => navigate('/mcp')}
-									className="justify-center"
-								>
-									<MCPSvg />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.skill-hub'), hidden: false }}
-									isActive={location.pathname.startsWith('/skill')}
-									onClick={() => navigate('/skill')}
-									className="justify-center"
-								>
-									<BookText />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									tooltip={{ children: t('common.knowledge'), hidden: false }}
-									isActive={location.pathname === '/knowledge'}
-									onClick={() => navigate('/knowledge')}
-									className="justify-center"
-								>
-									<LibraryBig />
-								</SidebarMenuButton>
-							</SidebarMenuItem>
+							{items.map((item) => (
+								<SidebarMenuItem key={item.key}>
+									<SidebarMenuButton
+										isActive={item.active}
+										onClick={item.onClick}
+									>
+										{item.icon}
+										<span>{item.label}</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+							))}
 						</SidebarMenu>
 					</SidebarGroupContent>
 				</SidebarGroup>
@@ -153,35 +149,25 @@ export function AppSidebar() {
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton
-							tooltip={{
-								children: i18n.language.startsWith('zh')
-									? t('common.switchToEn')
-									: t('common.switchToZh'),
-								hidden: false,
-							}}
-							onClick={handleToggleLanguage}
-							className="justify-center"
+							isActive={location.pathname === '/profile'}
+							onClick={() => navigate('/profile')}
+							tooltip={t('profile.title')}
 						>
-							<Languages />
+							<Avatar className="size-5">
+								<AvatarFallback
+									className="text-[10px] font-medium"
+									style={avatarTint(username || 'user')}
+								>
+									{userInitials(username)}
+								</AvatarFallback>
+							</Avatar>
+							<span className="truncate">{username || t('profile.title')}</span>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 					<SidebarMenuItem>
-						<SidebarMenuButton
-							tooltip={{ children: t('tour.trigger'), hidden: false }}
-							onClick={handleStartTour}
-							className="justify-center"
-						>
-							<Compass />
-						</SidebarMenuButton>
-					</SidebarMenuItem>
-					<SidebarMenuItem>
-						<SidebarMenuButton
-							tooltip={{ children: t('common.settings'), hidden: false }}
-							isActive={location.pathname === '/setup'}
-							onClick={() => navigate('/setup')}
-							className="justify-center"
-						>
-							<UserRound />
+						<SidebarMenuButton onClick={() => void handleLogout()}>
+							<LogOut />
+							<span>{t('auth.logout')}</span>
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 				</SidebarMenu>

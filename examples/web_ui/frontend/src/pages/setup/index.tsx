@@ -40,26 +40,19 @@ function notReadyComponents(detail: string): string {
 export const SetupPage = ({ onComplete, className }: Props) => {
 	const { t } = useTranslation();
 	const [url, setUrl] = useState(() => localStorage.getItem('server_url') ?? '');
-	const [username, setUsername] = useState(() => localStorage.getItem('username') ?? '');
 	const [checking, setChecking] = useState(false);
 	const [errorMsg, setErrorMsg] = useState('');
 
 	const describeFailure = (e: unknown): string => {
 		if (e instanceof ApiError) {
-			// Status 0 means the request never reached a server at all.
 			if (e.status === 0) return t('setup.errorUnreachable');
 			if (e.status === TIMEOUT_STATUS) return t('setup.errorTimeout');
-			// Something answered, but it has no /health — wrong address, or
-			// a backend too old to have one.
 			if (e.status === 404) return t('setup.errorNotAgentScope');
-			if (e.status === 401 || e.status === 422) return t('setup.errorUnauthorized');
 			if (e.status === 503) {
 				const down = notReadyComponents(e.detail);
 				return down ? `${t('setup.errorNotReady')}\n${down}` : t('setup.errorNotReady');
 			}
 		}
-		// A 200 whose body will not parse as JSON: an SPA dev server or a
-		// catch-all proxy answering with HTML, not our backend.
 		if (e instanceof SyntaxError) return t('setup.errorNotAgentScope');
 		return formatApiErrorForAlert(e);
 	};
@@ -67,26 +60,16 @@ export const SetupPage = ({ onComplete, className }: Props) => {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const trimmedUrl = url.trim().replace(/\/+$/, '');
-		const trimmedName = username.trim();
 
 		setChecking(true);
 		setErrorMsg('');
 		try {
-			// Persist only after the backend confirms both the address and
-			// the username work, so a failed attempt cannot leave the app
-			// holding a config that sends every later page into errors.
-			const health = (await healthApi.check(
-				trimmedUrl,
-				trimmedName,
-			)) as Partial<HealthResponse>;
-			// Valid JSON that is not a health report means the address points
-			// at some other service that happens to answer 200.
+			const health = (await healthApi.check(trimmedUrl)) as Partial<HealthResponse>;
 			if (typeof health.version !== 'string' || !health.components) {
 				setErrorMsg(t('setup.errorNotAgentScope'));
 				return;
 			}
 			localStorage.setItem('server_url', trimmedUrl);
-			localStorage.setItem('username', trimmedName);
 			onComplete();
 		} catch (err) {
 			setErrorMsg(describeFailure(err));
@@ -119,24 +102,9 @@ export const SetupPage = ({ onComplete, className }: Props) => {
 										required
 									/>
 								</Field>
-								<Field>
-									<FieldLabel htmlFor="username-input">
-										{t('setup.username')}
-									</FieldLabel>
-									<Input
-										id="username-input"
-										type="text"
-										placeholder={t('setup.usernamePlaceholder')}
-										value={username}
-										onChange={(e) => setUsername(e.target.value)}
-										required
-									/>
-								</Field>
 								{errorMsg && (
 									<Alert variant="destructive">
 										<CircleAlert />
-										{/* The failing-component list is appended on its
-										    own line, so newlines have to survive. */}
 										<AlertDescription className="whitespace-pre-wrap">
 											{errorMsg}
 										</AlertDescription>

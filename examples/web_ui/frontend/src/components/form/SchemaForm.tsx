@@ -108,9 +108,17 @@ export function SchemaForm({
 				const isNumber = type === 'number' || type === 'integer';
 				const enumOpts = enumValues(prop);
 
-				const label = labelFor?.(key, prop) ?? prop.title ?? key.replace(/_/g, ' ');
-				const placeholder = placeholderFor?.(key, prop) ?? prop.description;
-				const description = descriptionFor?.(key, prop);
+				// Prefer i18n overrides; never fall back to English schema
+				// title/description when an override callback is provided
+				// (even if it returns empty / undefined).
+				const label =
+					labelFor?.(key, prop) || prop.title || key.replace(/_/g, ' ');
+				const placeholder = placeholderFor
+					? placeholderFor(key, prop) || undefined
+					: prop.description;
+				const description = descriptionFor
+					? descriptionFor(key, prop) || undefined
+					: undefined;
 				const current = values[key];
 
 				const labelNode = (

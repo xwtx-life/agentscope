@@ -1,7 +1,11 @@
 import { toast } from 'sonner';
 
+import { localizeApiDetail } from '@/lib/localize-api-detail';
+
 export const getBaseUrl = () => localStorage.getItem('server_url') ?? '';
-export const getUserId = () => localStorage.getItem('username') ?? '';
+export const getAccessToken = () => localStorage.getItem('access_token') ?? '';
+/** Display name cached after login — not used for auth. */
+export const getUsername = () => localStorage.getItem('username') ?? '';
 
 /**
  * Structured error thrown for non-2xx HTTP responses.
@@ -28,8 +32,10 @@ interface RequestOptions {
 	signal?: AbortSignal;
 	/** Overrides the stored server URL. Lets the setup page probe an address before persisting it. */
 	baseUrl?: string;
-	/** Overrides the stored username, for the same reason as `baseUrl`. */
-	userId?: string;
+	/** Overrides the stored Bearer token (e.g. right after login before persist). */
+	token?: string;
+	/** When true, do not send Authorization (public endpoints). */
+	anonymous?: boolean;
 	/** Gives up after this many ms and reports {@link TIMEOUT_STATUS}. Off by default — a streaming chat is meant to stay open. */
 	timeoutMs?: number;
 }
@@ -37,9 +43,16 @@ interface RequestOptions {
 /** Reported when `timeoutMs` elapses. Real 408s come from a server, so either way the request did not complete in time. */
 export const TIMEOUT_STATUS = 408;
 
-function buildHeaders(hasBody: boolean, userId?: string): Record<string, string> {
-	const headers: Record<string, string> = { 'X-User-ID': userId ?? getUserId() };
+function buildHeaders(
+	hasBody: boolean,
+	options: { token?: string; anonymous?: boolean } = {},
+): Record<string, string> {
+	const headers: Record<string, string> = {};
 	if (hasBody) headers['Content-Type'] = 'application/json';
+	if (!options.anonymous) {
+		const token = options.token ?? getAccessToken();
+		if (token) headers['Authorization'] = `Bearer ${token}`;
+	}
 	return headers;
 }
 
@@ -64,7 +77,8 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 		signal,
 		silent = false,
 		baseUrl,
-		userId,
+		token,
+		anonymous,
 		timeoutMs,
 	} = options;
 	const url = new URL(path, baseUrl ?? getBaseUrl());
@@ -82,7 +96,7 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 	try {
 		res = await fetch(url.toString(), {
 			method,
-			headers: buildHeaders(body !== undefined, userId),
+			headers: buildHeaders(body !== undefined, { token, anonymous }),
 			body: body ? JSON.stringify(body) : undefined,
 			signal: combined,
 		});
@@ -96,17 +110,14 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 		// server: wrong address, DNS failure, refused connection, blocked
 		// preflight. Status 0 distinguishes that from any HTTP-level failure.
 		const error = timedOut
-			? new ApiError(TIMEOUT_STATUS, 'The server took too long to respond.')
-			: new ApiError(
-					0,
-					'Cannot reach the server. Check the server address and your network.',
-				);
+			? new ApiError(TIMEOUT_STATUS, '服务器响应超时，请稍后重试。')
+			: new ApiError(0, '无法连接服务器，请检查服务器地址与网络。');
 		if (!silent) toast.error(error.detail);
 		throw error;
 	}
 
 	if (!res.ok) {
-		const detail = await extractErrorDetail(res);
+		const detail = localizeApiDetail(await extractErrorDetail(res));
 		const error = new ApiError(res.status, detail);
 		if (!silent) toast.error(detail);
 		throw error;
@@ -125,21 +136,59 @@ export const client = {
 	get: <T>(
 		path: string,
 		params?: Record<string, string>,
-		options?: { silent?: boolean; baseUrl?: string; userId?: string; timeoutMs?: number },
+		options?: {
+			silent?: boolean;
+			baseUrl?: string;
+			token?: string;
+			anonymous?: boolean;
+			timeoutMs?: number;
+		},
 	) => request<T>(path, { method: 'GET', params, ...options }),
 	post: <T>(
 		path: string,
 		body?: unknown,
 		params?: Record<string, string>,
-		options?: { silent?: boolean; signal?: AbortSignal; timeoutMs?: number },
+		options?: {
+			silent?: boolean;
+			signal?: AbortSignal;
+			timeoutMs?: number;
+			baseUrl?: string;
+			token?: string;
+			anonymous?: boolean;
+		},
 	) => request<T>(path, { method: 'POST', body, params, ...options }),
+	put: <T>(
+		path: string,
+		body?: unknown,
+		params?: Record<string, string>,
+		options?: { silent?: boolean; baseUrl?: string; anonymous?: boolean },
+	) => request<T>(path, { method: 'PUT', body, params, silent: options?.silent, ...options }),
 	patch: <T>(
 		path: string,
 		body?: unknown,
 		params?: Record<string, string>,
-		options?: { silent?: boolean },
-	) => request<T>(path, { method: 'PATCH', body, params, silent: options?.silent }),
+		options?: { silent?: boolean; baseUrl?: string; anonymous?: boolean },
+	) => request<T>(path, { method: 'PATCH', body, params, silent: options?.silent, ...options }),
 	delete: <T = void>(path: string, params?: Record<string, string>) =>
 		request<T>(path, { method: 'DELETE', params }),
 	stream: (path: string, options?: RequestOptions) => streamRequest(path, options),
 };
+
+/** Persist login session after a successful register / login. */
+export function persistSession(accessToken: string, username: string) {
+	localStorage.setItem('access_token', accessToken);
+	localStorage.setItem('username', username);
+}
+
+/** Clear auth session (keeps server_url). */
+export function clearSession() {
+	localStorage.removeItem('access_token');
+	localStorage.removeItem('user_id');
+	localStorage.removeItem('username');
+	localStorage.removeItem('user_role');
+	localStorage.removeItem('department_name');
+}
+
+export function isLoggedIn() {
+	return !!getAccessToken() && !!getBaseUrl();
+}

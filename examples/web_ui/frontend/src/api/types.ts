@@ -38,6 +38,7 @@ export interface ContextConfig {
 export interface ReActConfig {
 	max_iters?: number;
 	stop_on_reject?: boolean;
+	interruption_message?: string;
 }
 
 export interface InviteConfig {
@@ -656,6 +657,46 @@ export interface MCPHubPage {
 export interface SkillHubPage {
 	cards: SkillCard[];
 	next_cursor: string | null;
+}
+
+export type SkillSubmissionStatus =
+	| 'scanning'
+	| 'scan_failed'
+	| 'pending_approval'
+	| 'rejected'
+	| 'approved'
+	| 'publishing'
+	| 'publish_failed'
+	| 'published';
+
+export interface SkillSubmission {
+	id: string;
+	tenant_id: string;
+	submitted_by: string;
+	name: string;
+	display_name: string | null;
+	description: string;
+	version: string;
+	status: SkillSubmissionStatus;
+	scan_status: 'passed' | 'failed' | null;
+	scan_findings: string[];
+	rejection_reason: string | null;
+	archive_size: number;
+	archive_sha256: string;
+	approved_by: string | null;
+	reviewed_at: string | null;
+	published_namespace: string | null;
+	published_slug: string | null;
+	published_version: string | null;
+	published_visibility: string | null;
+	last_error: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface SkillSubmissionListResponse {
+	submissions: SkillSubmission[];
+	total: number;
 }
 
 /**

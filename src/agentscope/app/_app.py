@@ -4,12 +4,14 @@ import json
 import os
 import secrets
 from weakref import WeakValueDictionary
+from collections.abc import Callable, Coroutine
 from typing import Type, TYPE_CHECKING, Any
 
 from pydantic import TypeAdapter
 
 from ._lifespan import lifespan
 from .access import DenyAllResourceAccessPolicy, ResourceAccessPolicyBase
+from .deps import get_current_user_id
 from .hub import HubBase, HubError, MCPHubBase, SkillHubBase
 from .rag.blob_store import BlobStoreBase, LocalBlobStore
 from .rag.knowledge_base_manager import KnowledgeBaseManagerBase
@@ -56,6 +58,9 @@ if TYPE_CHECKING:
 else:
     FastAPI = Any
     FastAPIMiddleware = Any
+
+# Async dependency ``(…) -> str`` that replaces header-based identity.
+UserIdDependency = Callable[..., Coroutine[Any, Any, str]]
 
 
 def _index_hubs(hubs: list | None, kind: str) -> dict:
@@ -134,6 +139,7 @@ def create_app(
     channels: list[Type[ChannelBase]] | None = None,
     download_secret: str | None = None,
     realtime_ice_servers: list[dict[str, Any]] | None = None,
+    user_id_dependency: UserIdDependency | None = None,
     title: str = "AgentScope",
     version: str = __version__,
     **kwargs: Any,
@@ -315,6 +321,13 @@ def create_app(
             ``AGENTSCOPE_REALTIME_ICE_SERVERS`` is used. The default is an
             empty list, which permits host candidates without silently
             sending network metadata to a public STUN service.
+        user_id_dependency (`UserIdDependency | None`, optional):
+            Async FastAPI dependency that returns the authenticated
+            caller's stable user id. When set, it replaces the default
+            ``X-User-ID`` header dependency for every route that uses
+            :func:`~agentscope.app.deps.get_current_user_id` (JWT / SSO
+            etc.). When ``None`` (default), the header-based identity is
+            kept for backward compatibility.
         title (`str`, defaults to ``"AgentScope"``):
             OpenAPI title shown in the docs UI.
         version (`str`, defaults to the package version):
@@ -331,6 +344,9 @@ def create_app(
         CredentialFactory.register_credential(cls)
 
     app = FastAPI(title=title, version=version, lifespan=lifespan)
+
+    if user_id_dependency is not None:
+        app.dependency_overrides[get_current_user_id] = user_id_dependency
 
     # Attach shared state that lifespan and dependencies read from app.state
     app.state.storage = storage

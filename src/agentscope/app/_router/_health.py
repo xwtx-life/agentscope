@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """The health router."""
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from ._schema import ComponentStatus, HealthResponse
-from ..deps import get_current_user_id
 
 health_router = APIRouter(tags=["health"])
 
@@ -26,40 +25,18 @@ _LIFESPAN_COMPONENTS = (
 _OPTIONAL_HUBS = ("mcp_hubs", "skill_hubs")
 
 
-@health_router.get(
-    "/health",
-    response_model=HealthResponse,
-    summary="Report service liveness and per-component readiness",
-)
-async def get_health(
+def _build_health_response(
     request: Request,
     response: Response,
-    _: str = Depends(get_current_user_id),
 ) -> HealthResponse:
-    """Report whether the service is ready to serve requests.
-
-    The check is deliberately I/O-free — it only inspects what is
-    attached to ``app.state``, so probing it never touches Redis, the
-    database or a workspace backend.
-
-    Under a plain ``uvicorn.run(app)`` the ``not_ready`` status is
-    effectively unreachable: uvicorn completes the lifespan startup
-    before it accepts connections, so anything that reaches this handler
-    already has the lifespan components in place.  What it does catch is
-    the mount-as-sub-app deployment documented in
-    :func:`~agentscope.app.create_app` — Starlette does not run a mounted
-    sub-app's lifespan, so every lifespan component stays missing and
-    all business endpoints are broken.  Reporting 503 here turns that
-    silent misconfiguration into one clear signal.
+    """Assemble the readiness report from ``app.state``.
 
     Args:
         request (`Request`): The incoming FastAPI request.
-        response (`Response`): The outgoing response, whose status code
-            is downgraded to ``503`` when the service is not ready.
+        response (`Response`): Downgraded to ``503`` when not ready.
 
     Returns:
-        `HealthResponse`: The overall status, API version and the
-        per-component readiness map.
+        `HealthResponse`: Status, version and per-component map.
     """
     state = request.app.state
     components: dict[str, ComponentStatus] = {
@@ -87,3 +64,40 @@ async def get_health(
         version=request.app.version,
         components=components,
     )
+
+
+@health_router.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Report service liveness and per-component readiness",
+)
+async def get_health(
+    request: Request,
+    response: Response,
+) -> HealthResponse:
+    """Report whether the service is ready to serve requests.
+
+    Public (no auth) so login / setup pages can probe the backend before
+    the caller has credentials. The check is deliberately I/O-free — it
+    only inspects what is attached to ``app.state``.
+
+    Under a plain ``uvicorn.run(app)`` the ``not_ready`` status is
+    effectively unreachable: uvicorn completes the lifespan startup
+    before it accepts connections, so anything that reaches this handler
+    already has the lifespan components in place.  What it does catch is
+    the mount-as-sub-app deployment documented in
+    :func:`~agentscope.app.create_app` — Starlette does not run a mounted
+    sub-app's lifespan, so every lifespan component stays missing and
+    all business endpoints are broken.  Reporting 503 here turns that
+    silent misconfiguration into one clear signal.
+
+    Args:
+        request (`Request`): The incoming FastAPI request.
+        response (`Response`): The outgoing response, whose status code
+            is downgraded to ``503`` when the service is not ready.
+
+    Returns:
+        `HealthResponse`: The overall status, API version and the
+        per-component readiness map.
+    """
+    return _build_health_response(request, response)

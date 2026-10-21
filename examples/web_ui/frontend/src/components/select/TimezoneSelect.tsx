@@ -62,7 +62,7 @@ export function TimezoneSelect({ className, value, onChange, disabled, ...props 
 						ref={inputRef}
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
-						placeholder="Search timezone..."
+						placeholder="搜索时区…"
 						className="h-6 border-0 shadow-none focus-visible:ring-0 text-xs px-0"
 						onKeyDown={(e) => e.stopPropagation()}
 					/>

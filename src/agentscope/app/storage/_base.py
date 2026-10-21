@@ -19,6 +19,8 @@ from ._model import (
     SessionConfig,
     SessionOrigin,
     SkillRecord,
+    SkillSubmissionRecord,
+    SkillSubmissionStatus,
     SOPRecord,
     SOPRunRecord,
     TeamRecord,
@@ -301,6 +303,37 @@ class StorageBase(ABC):
             `bool`:
                 True if deleted, False if not found.
         """
+
+    @abstractmethod
+    async def upsert_skill_submission(
+        self,
+        record: SkillSubmissionRecord,
+    ) -> str:
+        """Create or replace a tenant-scoped skill submission."""
+
+    @abstractmethod
+    async def list_skill_submissions(
+        self,
+        tenant_id: str,
+        status: SkillSubmissionStatus | None = None,
+    ) -> list[SkillSubmissionRecord]:
+        """List submissions visible inside one tenant."""
+
+    @abstractmethod
+    async def get_skill_submission(
+        self,
+        tenant_id: str,
+        submission_id: str,
+    ) -> SkillSubmissionRecord | None:
+        """Fetch one submission while enforcing its tenant boundary."""
+
+    @abstractmethod
+    async def delete_skill_submission(
+        self,
+        tenant_id: str,
+        submission_id: str,
+    ) -> bool:
+        """Delete one tenant-scoped submission and its index entry."""
 
     @abstractmethod
     async def upsert_agent(

@@ -35,10 +35,16 @@ from ..rag import ChunkerBase, ParserBase
 async def get_current_user_id(
     x_user_id: str = Header(
         description="Caller's user ID. "
-        "Temporary header-based identity; will be replaced by JWT auth.",
+        "Default header-based identity; override via "
+        "``create_app(user_id_dependency=...)`` for JWT / SSO.",
     ),
 ) -> str:
     """Return the caller's user ID from the ``X-User-ID`` request header.
+
+    Deployments that need real authentication should pass a custom
+    dependency to :func:`~agentscope.app.create_app` as
+    ``user_id_dependency``; that override replaces this function for
+    every route that depends on it.
 
     Args:
         x_user_id (`str`): Value of the ``X-User-ID`` header.

@@ -1,0 +1,90 @@
+# Parallel v0.2 overlay: keeps v0.1 (agentscope-stack) running on 18080/18081.
+# No gateway — expose API and web ports directly.
+# Browser: open WEB port, set server_url to API port on the setup page.
+name: agentscope-stack-v02
+
+services:
+  agentscope-api-v2:
+    # Deps-only image. Backend code is mounted from the host (edit + restart).
+    image: ${AGENTSCOPE_API_IMAGE:-local/agentscope-api:v0.2}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "${API_HTTP_PORT:-18083}:8000"
+    environment:
+      AGENTSCOPE_ENV: ${AGENTSCOPE_ENV:-development}
+      AGENTSCOPE_JWT_SECRET: ${AGENTSCOPE_JWT_SECRET:?set AGENTSCOPE_JWT_SECRET in .env.v02}
+      AGENTSCOPE_SECRET_ENCRYPTION_KEY: ${AGENTSCOPE_SECRET_ENCRYPTION_KEY:-}
+      # Must include the WEB origin (browser page), not only the API port.
+      AGENTSCOPE_CORS_ORIGINS: ${AGENTSCOPE_CORS_ORIGINS:-http://127.0.0.1:18082}
+      AGENTSCOPE_SECURE_COOKIES: ${AGENTSCOPE_SECURE_COOKIES:-false}
+      AGENTSCOPE_REDIS_HOST: agentscope-redis
+      AGENTSCOPE_REDIS_PORT: 6379
+      AGENTSCOPE_REDIS_DB: ${AGENTSCOPE_REDIS_DB:-0}
+      AGENTSCOPE_REDIS_PASSWORD: ${AGENTSCOPE_REDIS_PASSWORD:-}
+      REDIS_HOST: agentscope-redis
+      REDIS_PORT: "6379"
+      AGENTSCOPE_MESSAGE_BUS: ${AGENTSCOPE_MESSAGE_BUS:-redis}
+      AGENTSCOPE_QDRANT_URL: http://qdrant:6333
+      AGENTSCOPE_WORKSPACE_ROOT: /var/lib/agentscope/workspaces
+      AGENTSCOPE_BLOB_ROOT: /var/lib/agentscope/blobs
+      AGENTSCOPE_SKILL_SUBMISSION_ROOT: /var/lib/agentscope/skill_submissions
+      PYTHONPATH: /opt/agentscope/src
+      AGENTSCOPE_ENABLE_MCP: ${AGENTSCOPE_ENABLE_MCP:-0}
+      AMAP_API_KEY: ${AMAP_API_KEY:-}
+      CLAWHUB_API_TOKEN: ${CLAWHUB_API_TOKEN:-}
+      AGENTSCOPE_SKILLHUB_URL: ${AGENTSCOPE_SKILLHUB_URL:-http://skillhub-server:8080}
+      AGENTSCOPE_SKILLHUB_TOKEN: ${AGENTSCOPE_SKILLHUB_TOKEN:-}
+    volumes:
+      # Host tree: <AGENTSCOPE_HOST_ROOT>/{src,examples/agent_service}
+      # Live default: /home/agent/v2/source  →  AGENTSCOPE_HOST_ROOT=../source
+      - ${AGENTSCOPE_HOST_ROOT:-../source}/src:/opt/agentscope/src:ro
+      - ${AGENTSCOPE_HOST_ROOT:-../source}/examples/agent_service:/opt/agentscope/examples/agent_service:ro
+      - agentscope_workspaces:/var/lib/agentscope/workspaces
+      - agentscope_blobs:/var/lib/agentscope/blobs
+      - agentscope_skill_submissions:/var/lib/agentscope/skill_submissions
+    networks:
+      - v01_net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+  agentscope-web-v2:
+    image: ${AGENTSCOPE_WEB_IMAGE:-local/agentscope-web:v0.2}
+    pull_policy: never
+    restart: unless-stopped
+    ports:
+      - "${WEB_HTTP_PORT:-18082}:80"
+    depends_on:
+      agentscope-api-v2:
+        condition: service_healthy
+    networks:
+      - v01_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  v01_net:
+    external: true
+    name: ${V01_DOCKER_NETWORK:-agentscope-stack_default}
+
+volumes:
+  agentscope_workspaces:
+    external: true
+    name: ${V01_VOLUME_WORKSPACES:-agentscope-stack_agentscope_workspaces}
+  agentscope_blobs:
+    external: true
+    name: ${V01_VOLUME_BLOBS:-agentscope-stack_agentscope_blobs}
+  agentscope_skill_submissions:
+    external: true
+    name: ${V01_VOLUME_SKILL_SUBMISSIONS:-agentscope-stack_agentscope_skill_submissions}

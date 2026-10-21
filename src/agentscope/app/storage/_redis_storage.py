@@ -25,6 +25,8 @@ from ._model import (
     ScheduleOrigin,
     SessionOrigin,
     SkillRecord,
+    SkillSubmissionRecord,
+    SkillSubmissionStatus,
     SOPRecord,
     SOPRunRecord,
     TeamRecord,
@@ -72,12 +74,18 @@ class RedisStorage(StorageBase):
         session: str = "agentscope:user:{user_id}:session:{session_id}"
         mcp: str = "agentscope:user:{user_id}:mcp:{mcp_id}"
         skill: str = "agentscope:user:{user_id}:skill:{skill_id}"
+        skill_submission: str = (
+            "agentscope:tenant:{tenant_id}:skill_submission:{submission_id}"
+        )
 
         # Index keys (Redis Sets — store all IDs for a given scope)
         credential_index: str = "agentscope:user:{user_id}:credentials"
         agent_index: str = "agentscope:user:{user_id}:agents"
         mcp_index: str = "agentscope:user:{user_id}:mcps"
         skill_index: str = "agentscope:user:{user_id}:skills"
+        skill_submission_index: str = (
+            "agentscope:tenant:{tenant_id}:skill_submissions"
+        )
 
         # Name indexes (Redis Hash — name → record id). Each doubles as
         # the per-user uniqueness constraint and as the lookup for the
@@ -718,6 +726,93 @@ class RedisStorage(StorageBase):
                 ),
                 record.name,
             )
+        return deleted > 0
+
+    async def upsert_skill_submission(
+        self,
+        record: SkillSubmissionRecord,
+    ) -> str:
+        """Persist a tenant-scoped skill submission."""
+        key = self._key(
+            self.key_config.skill_submission,
+            tenant_id=record.tenant_id,
+            submission_id=record.id,
+        )
+        existing = await self._client.get(key)
+        if existing:
+            record.updated_at = datetime.now()
+        await self._set_with_ttl(key, record.model_dump_json())
+        await self._client.sadd(
+            self._key(
+                self.key_config.skill_submission_index,
+                tenant_id=record.tenant_id,
+            ),
+            record.id,
+        )
+        return record.id
+
+    async def list_skill_submissions(
+        self,
+        tenant_id: str,
+        status: SkillSubmissionStatus | None = None,
+    ) -> list[SkillSubmissionRecord]:
+        """List submissions in one tenant, optionally filtered by status."""
+        ids = await self._client.smembers(
+            self._key(
+                self.key_config.skill_submission_index,
+                tenant_id=tenant_id,
+            ),
+        )
+        records: list[SkillSubmissionRecord] = []
+        for submission_id in ids:
+            raw = await self._client.get(
+                self._key(
+                    self.key_config.skill_submission,
+                    tenant_id=tenant_id,
+                    submission_id=submission_id,
+                ),
+            )
+            if raw:
+                record = SkillSubmissionRecord.model_validate_json(raw)
+                if status is None or record.status == status:
+                    records.append(record)
+        return sorted(records, key=lambda item: item.created_at, reverse=True)
+
+    async def get_skill_submission(
+        self,
+        tenant_id: str,
+        submission_id: str,
+    ) -> SkillSubmissionRecord | None:
+        """Fetch a submission only inside its tenant namespace."""
+        raw = await self._client.get(
+            self._key(
+                self.key_config.skill_submission,
+                tenant_id=tenant_id,
+                submission_id=submission_id,
+            ),
+        )
+        return SkillSubmissionRecord.model_validate_json(raw) if raw else None
+
+    async def delete_skill_submission(
+        self,
+        tenant_id: str,
+        submission_id: str,
+    ) -> bool:
+        """Delete a submission and its tenant index entry."""
+        deleted = await self._client.delete(
+            self._key(
+                self.key_config.skill_submission,
+                tenant_id=tenant_id,
+                submission_id=submission_id,
+            ),
+        )
+        await self._client.srem(
+            self._key(
+                self.key_config.skill_submission_index,
+                tenant_id=tenant_id,
+            ),
+            submission_id,
+        )
         return deleted > 0
 
     async def upsert_agent(

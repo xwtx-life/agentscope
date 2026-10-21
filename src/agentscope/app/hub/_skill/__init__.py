@@ -4,6 +4,13 @@
 from ._base import SkillArchive, SkillHubBase
 from ._card import SkillCard, SkillHubPage
 from ._claw_hub import ClawSkillHub
+from ._iflytek_skill_hub import (
+    IFlytekSkillHub,
+    SkillHubConnection,
+    SkillHubConnectionResolutionError,
+    SkillHubConnectionResolver,
+    SkillPublishResult,
+)
 
 __all__ = [
     "SkillArchive",
@@ -11,4 +18,9 @@ __all__ = [
     "SkillCard",
     "SkillHubPage",
     "ClawSkillHub",
+    "IFlytekSkillHub",
+    "SkillHubConnection",
+    "SkillHubConnectionResolutionError",
+    "SkillHubConnectionResolver",
+    "SkillPublishResult",
 ]

@@ -2,6 +2,8 @@ import type { UserConfirmResultEvent } from '@agentscope-ai/agentscope/event';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { localizeApiDetail } from '@/lib/localize-api-detail';
+
 import { BrowserWebRTCTransport, type RealtimeConnectionState } from '@/lib/browserWebRTCTransport';
 
 export function useRealtimeVoice(agentId: string | null, sessionId: string | null) {
@@ -38,7 +40,7 @@ export function useRealtimeVoice(agentId: string | null, sessionId: string | nul
 				if (transportRef.current !== transport) return;
 				transportRef.current = null;
 				setState('error');
-				toast.error(error.message);
+				toast.error(localizeApiDetail(error.message));
 			},
 		});
 		transportRef.current = transport;
@@ -49,7 +51,11 @@ export function useRealtimeVoice(agentId: string | null, sessionId: string | nul
 			if (transportRef.current === transport) {
 				transportRef.current = null;
 				setState('error');
-				toast.error(error instanceof Error ? error.message : 'Voice mode failed to start.');
+				toast.error(
+					localizeApiDetail(
+						error instanceof Error ? error.message : 'Voice mode failed to start.',
+					),
+				);
 			}
 		}
 	}, [agentId, sessionId]);
@@ -61,7 +67,7 @@ export function useRealtimeVoice(agentId: string | null, sessionId: string | nul
 
 	const userConfirm = useCallback(async (event: UserConfirmResultEvent) => {
 		const transport = transportRef.current;
-		if (!transport) throw new Error('Realtime voice mode is not active.');
+		if (!transport) throw new Error('实时语音模式未开启。');
 		transport.userConfirm(event);
 	}, []);
 

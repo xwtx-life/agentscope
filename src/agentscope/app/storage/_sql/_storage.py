@@ -34,6 +34,8 @@ from .._model import (
     SessionConfig,
     SessionOrigin,
     SkillRecord,
+    SkillSubmissionRecord,
+    SkillSubmissionStatus,
     SOPRecord,
     SOPRunRecord,
     TeamRecord,
@@ -990,6 +992,45 @@ class AsyncSQLAlchemyStorage(StorageBase):
             )
             await sess.commit()
         return result.rowcount > 0
+
+    async def upsert_skill_submission(
+        self,
+        record: SkillSubmissionRecord,
+    ) -> str:
+        """Skill submissions are Redis-backed in this deployment."""
+        raise NotImplementedError(
+            "Skill submissions require RedisStorage.",
+        )
+
+    async def list_skill_submissions(
+        self,
+        tenant_id: str,
+        status: SkillSubmissionStatus | None = None,
+    ) -> list[SkillSubmissionRecord]:
+        """Skill submissions are Redis-backed in this deployment."""
+        raise NotImplementedError(
+            "Skill submissions require RedisStorage.",
+        )
+
+    async def get_skill_submission(
+        self,
+        tenant_id: str,
+        submission_id: str,
+    ) -> SkillSubmissionRecord | None:
+        """Skill submissions are Redis-backed in this deployment."""
+        raise NotImplementedError(
+            "Skill submissions require RedisStorage.",
+        )
+
+    async def delete_skill_submission(
+        self,
+        tenant_id: str,
+        submission_id: str,
+    ) -> bool:
+        """Skill submissions are Redis-backed in this deployment."""
+        raise NotImplementedError(
+            "Skill submissions require RedisStorage.",
+        )
 
     # ------------------------------------------------------------------
     # Agents

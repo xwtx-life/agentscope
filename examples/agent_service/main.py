@@ -13,8 +13,10 @@ from agentscope.app.channel import (
     DiscordChannel,
     FeishuChannel,
 )
-from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
-from agentscope.app.message_bus import InMemoryMessageBus
+from agentscope.app._service._skill_submission import SkillSubmissionService
+from agentscope.app.hub import GitHubMCPHub, IFlytekSkillHub
+from agentscope.app.message_bus import InMemoryMessageBus, RedisMessageBus
+from agentscope.app.rag.blob_store import LocalBlobStore
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
 from agentscope.app.storage import RedisStorage
 from agentscope.app.workspace_manager import LocalWorkspaceManager
@@ -24,35 +26,128 @@ from agentscope.permission import PermissionContext, PermissionMode
 from agentscope.rag import ApproxTokenChunker, QdrantStore
 from agentscope.workspace import WorkspaceBase
 
-default_mcps = [
-    MCPClient(
-        name="playwright",
-        mcp_config=StdioMCPConfig(
-            command="npx",
-            args=["@playwright/mcp@latest"],
-        ),
-        is_stateful=True,
-    ),
+from auth import (
+    AuthStore,
+    ShareAllAgentsPolicy,
+    auth_router,
+    create_jwt_user_dependency,
+    custom_models_router,
+    department_router,
+    load_skillhub_settings_into_hub,
+    skillhub_settings_router,
+)
+from auth.skill_submission_router import submission_router
+
+
+def _env(*names: str, default: str | None = None) -> str | None:
+    """Return the first non-empty env value among *names*."""
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip() != "":
+            return value.strip()
+    return default
+
+
+def _env_int(*names: str, default: int) -> int:
+    raw = _env(*names)
+    if raw is None:
+        return default
+    return int(raw)
+
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+_REDIS_HOST = _env("REDIS_HOST", "AGENTSCOPE_REDIS_HOST", default="localhost")
+_REDIS_PORT = _env_int("REDIS_PORT", "AGENTSCOPE_REDIS_PORT", default=6379)
+_REDIS_DB = _env_int("REDIS_DB", "AGENTSCOPE_REDIS_DB", default=0)
+_REDIS_PASSWORD = _env("REDIS_PASSWORD", "AGENTSCOPE_REDIS_PASSWORD")
+
+_WORKSPACE_ROOT = _env(
+    "AGENTSCOPE_WORKSPACE_ROOT",
+    default=os.path.join(_HERE, "workspaces"),
+)
+_BLOB_ROOT = _env(
+    "AGENTSCOPE_BLOB_ROOT",
+    default=os.path.join(_HERE, "blobs"),
+)
+_SKILL_SUBMISSION_ROOT = _env(
+    "AGENTSCOPE_SKILL_SUBMISSION_ROOT",
+    default=os.path.join(_HERE, "skill_submissions"),
+)
+_QDRANT_URL = _env("AGENTSCOPE_QDRANT_URL")
+_MESSAGE_BUS = (
+    _env("AGENTSCOPE_MESSAGE_BUS", default="memory") or "memory"
+).lower()
+_CORS_ORIGINS = [
+    origin.strip()
+    for origin in (
+        _env("AGENTSCOPE_CORS_ORIGINS", default="*") or "*"
+    ).split(",")
+    if origin.strip()
 ]
 
-if os.getenv("AMAP_API_KEY"):
-    default_mcps.append(
-        MCPClient(
-            name="amap",
-            mcp_config=HttpMCPConfig(
-                url=f"https://mcp.amap.com/mcp?key="
-                f"{os.environ['AMAP_API_KEY']}",
-            ),
-            is_stateful=False,
-        ),
-    )
-
-storage = RedisStorage(
-    host="localhost",
-    port=6379,
+# MCP is off by default (Docker often lacks npx/network for Playwright).
+# Set AGENTSCOPE_ENABLE_MCP=1 to restore default Playwright (+ Amap if keyed).
+_ENABLE_MCP = (_env("AGENTSCOPE_ENABLE_MCP", default="0") or "0").lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
 )
 
-vector_store = QdrantStore(location=":memory:")
+default_mcps: list[MCPClient] = []
+if _ENABLE_MCP:
+    default_mcps = [
+        MCPClient(
+            name="playwright",
+            mcp_config=StdioMCPConfig(
+                command="npx",
+                args=["@playwright/mcp@latest"],
+            ),
+            is_stateful=True,
+        ),
+    ]
+    if os.getenv("AMAP_API_KEY"):
+        default_mcps.append(
+            MCPClient(
+                name="amap",
+                mcp_config=HttpMCPConfig(
+                    url=f"https://mcp.amap.com/mcp?key="
+                    f"{os.environ['AMAP_API_KEY']}",
+                ),
+                is_stateful=False,
+            ),
+        )
+
+storage = RedisStorage(
+    host=_REDIS_HOST,
+    port=_REDIS_PORT,
+    db=_REDIS_DB,
+    password=_REDIS_PASSWORD or None,
+)
+
+# Account / department store (JWT auth). Shares Redis with agent storage.
+auth_store = AuthStore(
+    host=_REDIS_HOST,
+    port=_REDIS_PORT,
+    db=_REDIS_DB,
+    password=_REDIS_PASSWORD or None,
+)
+
+if _QDRANT_URL:
+    vector_store = QdrantStore(url=_QDRANT_URL)
+else:
+    vector_store = QdrantStore(location=":memory:")
+
+if _MESSAGE_BUS == "redis":
+    message_bus = RedisMessageBus(
+        host=_REDIS_HOST,
+        port=_REDIS_PORT,
+        db=_REDIS_DB,
+        password=_REDIS_PASSWORD or None,
+    )
+else:
+    message_bus = InMemoryMessageBus()
 
 
 async def longterm_memory_factory(
@@ -74,40 +169,36 @@ async def longterm_memory_factory(
 
 app = create_app(
     storage=storage,
-    message_bus=InMemoryMessageBus(),
-    # -- To use a Redis-backed message bus instead (recommended for
-    # -- multi-process / production deployments), uncomment the lines
-    # -- below and replace the InMemoryMessageBus() above:
-    #
-    # from agentscope.app.message_bus import RedisMessageBus
-    # message_bus=RedisMessageBus(
-    #     host="localhost",
-    #     port=6379,
-    # ),
+    message_bus=message_bus,
     workspace_manager=LocalWorkspaceManager(
-        basedir=os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "workspaces",
-        ),
+        basedir=_WORKSPACE_ROOT,
         # The default MCP servers that will be added into the workspace
         default_mcps=default_mcps,
     ),
-    # Knowledge base feature — backed by an in-memory Qdrant store. The
-    # CollectionPerKbManager allocates one collection per knowledge base,
+    # Knowledge base feature — Qdrant URL when set (Docker), else in-memory.
+    # The CollectionPerKbManager allocates one collection per knowledge base,
     # so any embedding dimension is allowed.
     knowledge_base_manager=CollectionPerKbManager(
         storage=storage,
         vector_store=vector_store,
     ),
+    blob_store=LocalBlobStore(root_dir=_BLOB_ROOT),
     # Chunker classes users can pick from when creating a knowledge base;
     # the chosen type and parameters are pinned on the knowledge base.
     knowledge_chunkers=[ApproxTokenChunker],
-    # Resource hubs the UI browses under /hub. Neither needs credentials
-    # of its own — an individual MCP card declares whatever key it wants
-    # from the user in its ``inputs_schema``. Passing a ClawHub token
-    # only raises the rate limit.
-    mcp_hubs=[GitHubMCPHub()],
-    skill_hubs=[ClawSkillHub(api_token=os.getenv("CLAWHUB_API_TOKEN"))],
+    # Resource hubs the UI browses under /hub. MCP hubs off unless
+    # AGENTSCOPE_ENABLE_MCP=1. SkillHub is the sole skill source —
+    # URL/token come from env defaults, then Redis settings (admin UI).
+    mcp_hubs=[GitHubMCPHub()] if _ENABLE_MCP else [],
+    skill_hubs=[
+        IFlytekSkillHub(
+            base_url=os.getenv(
+                "AGENTSCOPE_SKILLHUB_URL",
+                "http://127.0.0.1:8080",
+            ),
+            api_token=os.getenv("AGENTSCOPE_SKILLHUB_TOKEN") or None,
+        ),
+    ],
     # Customize your own subagent templates
     custom_subagent_templates=[
         SubAgentTemplate(
@@ -152,7 +243,7 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
     extra_middlewares=[
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=_CORS_ORIGINS,
             allow_methods=["*"],
             allow_headers=["*"],
         ),
@@ -162,7 +253,37 @@ so anything you want them to see MUST be sent through `TeamSay`.""",
         DiscordChannel,
         FeishuChannel,
     ],
+    # Real auth: every business route resolves identity from a JWT only.
+    # Spoofable X-User-ID headers are ignored.
+    user_id_dependency=create_jwt_user_dependency(),
+    # Agents (and supporting credentials / KBs) are visible to everyone
+    # as read/use; only the creator can PATCH/DELETE.
+    resource_access_policy=ShareAllAgentsPolicy(auth_store),
 )
+
+app.state.auth_store = auth_store
+# Skill upload → admin review → publish to the first registered SkillHub.
+_skill_hub = next(iter(app.state.skill_hubs.values()), None)
+app.state.skill_submission_service = SkillSubmissionService(
+    storage=storage,
+    root_dir=_SKILL_SUBMISSION_ROOT or os.path.join(_HERE, "skill_submissions"),
+    publisher=_skill_hub,
+)
+app.include_router(auth_router)
+app.include_router(department_router)
+app.include_router(custom_models_router)
+app.include_router(skillhub_settings_router)
+app.include_router(submission_router)
+
+
+@app.on_event("startup")
+async def _load_skillhub_settings() -> None:
+    """Apply Redis-persisted SkillHub URL/token over env defaults."""
+    hub = app.state.skill_hubs.get("skillhub")
+    if isinstance(hub, IFlytekSkillHub):
+        await load_skillhub_settings_into_hub(auth_store, hub)
+        # Keep the submission publisher pointed at the live hub settings.
+        app.state.skill_submission_service.publisher = hub
 
 
 if __name__ == "__main__":

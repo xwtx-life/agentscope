@@ -25,7 +25,6 @@ import { ChatContent } from '@/components/chat/ChatContent.tsx';
 import { SubagentHitlCard } from '@/components/chat/SubagentHitlCard';
 import { CreateCredentialDialog } from '@/components/dialog/CreateCredentialDialog';
 import { KnowledgeBasePanel } from '@/components/panel/KnowledgeBasePanel';
-import { McpPanel } from '@/components/panel/McpPanel';
 import { PanelDock, type PanelDescriptor, type PanelKey } from '@/components/panel/PanelDock.tsx';
 import { PermissionPanel } from '@/components/panel/PermissionPanel';
 import { SkillPanel } from '@/components/panel/SkillPanel';
@@ -116,7 +115,10 @@ function loadPanelLayout(): PanelKey[][] {
 		return parsed
 			.map((column: unknown) =>
 				Array.isArray(column)
-					? column.filter((key): key is PanelKey => key in KNOWN_PANELS)
+					? column.filter(
+							(key): key is PanelKey =>
+								key in KNOWN_PANELS && key !== 'mcp',
+						)
 					: [],
 			)
 			.filter((column) => column.length > 0);
@@ -192,7 +194,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	);
 	const [selectedKnowledgeConfig, setSelectedKnowledgeConfig] =
 		useState<SessionKnowledgeConfig | null>(null);
-	const [selectedPermissionMode, setSelectedPermissionMode] = useState<string>('default');
+	const [selectedPermissionMode, setSelectedPermissionMode] = useState<string>('bypass');
 	const [credentialOpen, setCredentialOpen] = useState(false);
 	const [tasksContext, setTasksContext] = useState<TaskContext | null>(null);
 	const [permissionContext, setPermissionContext] = useState<PermissionContext | null>(null);
@@ -277,11 +279,6 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		sendRealtimeUserConfirm: realtimeVoice.userConfirm,
 	});
 	const {
-		mcps,
-		loading: mcpsLoading,
-		addMcps,
-		addMcpsFromLibrary,
-		removeMcp,
 		skills,
 		skillsLoading,
 		uploadSkill,
@@ -293,6 +290,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 
 	// Toggle a panel open/closed from the top-bar buttons.
 	const togglePanel = useCallback((key: PanelKey) => {
+		if (key === 'mcp') return;
 		setPanelLayout((layout) =>
 			layout.some((column) => column.includes(key))
 				? closePanelInLayout(layout, key)
@@ -400,15 +398,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 			mcp: {
 				title: 'MCP',
 				icon: <MCPSvg className="size-4" />,
-				content: (
-					<McpPanel
-						mcps={mcps}
-						loading={mcpsLoading}
-						onAdd={addMcps}
-						onAddFromLibrary={addMcpsFromLibrary}
-						onRemove={removeMcp}
-					/>
-				),
+				content: <div className="p-3 text-sm text-muted-foreground">MCP is disabled.</div>,
 			},
 			skill: {
 				title: t('panel.skill.title'),
@@ -428,8 +418,12 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 					<span className="flex items-center gap-x-2">
 						{t('panel.permission.title')}
 						{permissionContext?.mode ? (
-							<Badge variant="outline" className="capitalize">
-								{t('panel.permission.mode', { mode: permissionContext.mode })}
+							<Badge variant="outline">
+								{t('panel.permission.mode', {
+									mode: t(`permission-mode.${permissionContext.mode}`, {
+										defaultValue: permissionContext.mode,
+									}),
+								})}
 							</Badge>
 						) : null}
 					</span>
@@ -483,11 +477,6 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		[
 			t,
 			tasksContext,
-			mcps,
-			mcpsLoading,
-			addMcps,
-			addMcpsFromLibrary,
-			removeMcp,
 			skills,
 			skillsLoading,
 			uploadSkill,
@@ -656,12 +645,12 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 
 	// Sync selectedPermissionMode when the session changes. Same
 	// loading-window guard as above — don't reset the displayed mode
-	// to "default" while the new session view is still on the wire.
+	// while the new session view is still on the wire.
 	useEffect(() => {
 		if (!view) return;
 		const mode = (view.session.state?.permission_context as Record<string, unknown>)
 			?.mode as string;
-		setSelectedPermissionMode(mode ?? 'default');
+		setSelectedPermissionMode(mode ?? 'bypass');
 	}, [sessionId, view]);
 
 	/**
@@ -857,14 +846,6 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 											>
 												<ListTodo />
 												{t('panel.plan.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('mcp')}
-												onCheckedChange={() => togglePanel('mcp')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<MCPSvg className="size-4" />
-												MCP
 											</DropdownMenuCheckboxItem>
 											<DropdownMenuCheckboxItem
 												checked={isPanelOpen('skill')}

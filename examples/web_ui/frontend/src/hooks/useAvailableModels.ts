@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { credentialApi, modelApi } from '@/api';
+import { credentialApi, customModelsApi, modelApi } from '@/api';
 import type { CredentialView, ModelCard } from '@/api';
+import { credentialUsesManualModels } from '@/lib/credential-models';
 
 export interface CredentialWithModels {
 	credential: CredentialView;
@@ -16,6 +17,9 @@ export interface CredentialWithModels {
  * One credential list plus one model list per provider — the most expensive
  * fan-out on the page, and every model picker in the app mounts it. Cached
  * under a shared query key that credential mutations invalidate.
+ *
+ * OpenAI credentials with a custom base URL (SiliconFlow / NewAPI) only
+ * expose user-added custom models — the built-in GPT catalogue is omitted.
  */
 async function fetchGroups(): Promise<Record<string, CredentialWithModels[]>> {
 	const { credentials } = await credentialApi.list();
@@ -27,15 +31,22 @@ async function fetchGroups(): Promise<Record<string, CredentialWithModels[]>> {
 			if (!type) return;
 			if (!result[type]) result[type] = [];
 			try {
-				const { models } = await modelApi.list(type);
-				// Reverse-alphabetical, which is how the providers' naming
-				// schemes rank themselves — gpt-5 before gpt-4, qwen3 before
-				// qwen2 — so the strongest models sit at the top of the picker.
+				const manualOnly = credentialUsesManualModels(credential);
+				const [builtinRes, custom] = await Promise.all([
+					manualOnly
+						? Promise.resolve({ models: [] as ModelCard[] })
+						: modelApi.list(type),
+					customModelsApi.list(credential.id).catch(() => [] as ModelCard[]),
+				]);
+				const builtin = builtinRes.models;
+				const customNames = new Set(custom.map((m) => m.name));
+				const merged = [
+					...custom,
+					...builtin.filter((m) => !customNames.has(m.name)),
+				].sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
 				result[type].push({
 					credential,
-					models: [...models].sort((a, b) =>
-						b.name.localeCompare(a.name, undefined, { numeric: true }),
-					),
+					models: merged,
 				});
 			} catch {
 				result[type].push({ credential, models: [] });

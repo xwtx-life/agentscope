@@ -62,7 +62,7 @@ export function defaultChannelForm(agentId = ''): ChannelFormValue {
 		],
 		chatModelConfig: null,
 		fallbackChatModelConfig: null,
-		permissionMode: 'default' as PermissionMode,
+		permissionMode: 'bypass' as PermissionMode,
 	};
 }
 

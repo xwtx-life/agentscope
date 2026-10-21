@@ -40,6 +40,11 @@ from ._session import (
     SOPOrigin,
 )
 from ._skill import SkillRecord
+from ._skill_submission import (
+    SkillScanStatus,
+    SkillSubmissionRecord,
+    SkillSubmissionStatus,
+)
 from ._sop import (
     AgentVerifier,
     HumanVerifier,
@@ -84,6 +89,9 @@ __all__ = [
     "ChannelOrigin",
     "TeamOrigin",
     "SkillRecord",
+    "SkillScanStatus",
+    "SkillSubmissionRecord",
+    "SkillSubmissionStatus",
     "AgentVerifier",
     "HumanVerifier",
     "SOPAgentRef",

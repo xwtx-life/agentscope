@@ -14,12 +14,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useTranslation } from '@/i18n/useI18n.ts';
 import { cn } from '@/lib/utils.ts';
 
-const PERMISSION_MODES: { value: PermissionMode; label: string }[] = [
-	{ value: 'default', label: 'Default' },
-	{ value: 'accept_edits', label: 'Accept Edits' },
-	{ value: 'explore', label: 'Explore' },
-	{ value: 'bypass', label: 'Bypass' },
-	{ value: 'dont_ask', label: "Don't Ask" },
+const PERMISSION_MODES: PermissionMode[] = [
+	'bypass',
+	'default',
+	'accept_edits',
+	'explore',
+	'dont_ask',
 ];
 
 interface Props extends Omit<React.ComponentPropsWithoutRef<typeof Button>, 'onChange' | 'value'> {
@@ -33,7 +33,7 @@ export function PermissionModeSelect({ className, value, disabled, onChange, ...
 	const { t } = useTranslation();
 
 	const displayLabel = value
-		? (PERMISSION_MODES.find((m) => m.value === value)?.label ?? value)
+		? t(`permission-mode.${value}`)
 		: t('permission-mode.placeholder');
 
 	return (
@@ -58,14 +58,14 @@ export function PermissionModeSelect({ className, value, disabled, onChange, ...
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>{t('permission-mode.label')}</DropdownMenuLabel>
 					{PERMISSION_MODES.map((mode) => (
-						<Tooltip key={mode.value}>
+						<Tooltip key={mode}>
 							<TooltipTrigger asChild>
-								<DropdownMenuItem onSelect={() => onChange?.(mode.value)}>
-									{mode.label}
+								<DropdownMenuItem onSelect={() => onChange?.(mode)}>
+									{t(`permission-mode.${mode}`)}
 								</DropdownMenuItem>
 							</TooltipTrigger>
 							<TooltipContent side="right">
-								{t(`permission-mode.${mode.value}-tooltip`)}
+								{t(`permission-mode.${mode}-tooltip`)}
 							</TooltipContent>
 						</Tooltip>
 					))}

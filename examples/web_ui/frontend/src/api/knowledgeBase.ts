@@ -1,4 +1,4 @@
-import { ApiError, client, getBaseUrl, getUserId } from './client';
+import { ApiError, client, getAccessToken, getBaseUrl } from './client';
 import type {
 	CreateKnowledgeBaseRequest,
 	CreateKnowledgeBaseResponse,
@@ -101,7 +101,7 @@ function uploadDocumentXhr(
 		const xhr = new XMLHttpRequest();
 		const url = new URL(`/knowledge_bases/${knowledgeBaseId}/documents`, getBaseUrl());
 		xhr.open('POST', url.toString(), true);
-		xhr.setRequestHeader('X-User-ID', getUserId());
+		xhr.setRequestHeader('Authorization', `Bearer ${getAccessToken()}`);
 
 		const onAbort = () => xhr.abort();
 		signal?.addEventListener('abort', onAbort, { once: true });
@@ -141,7 +141,7 @@ function uploadDocumentXhr(
 		};
 		xhr.onerror = () => {
 			cleanup();
-			reject(new ApiError(0, 'Network error'));
+			reject(new ApiError(0, '网络错误。'));
 		};
 		xhr.onabort = () => {
 			cleanup();

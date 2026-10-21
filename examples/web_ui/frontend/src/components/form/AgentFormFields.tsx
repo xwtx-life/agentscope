@@ -115,20 +115,16 @@ export function AgentFormFields({ schema, values, onChange }: Props) {
 								values={values[sectionKey]}
 								onChange={(k, v) => onChange(sectionKey, k, v)}
 								idPrefix={`agent-form-${sectionI18n}`}
-								labelFor={(k, prop) =>
+								labelFor={(k) =>
 									t(`agent-form.${sectionI18n}.${toKebab(k)}.label`, {
-										defaultValue: prop.title ?? k.replace(/_/g, ' '),
+										defaultValue: k.replace(/_/g, ' '),
 									})
 								}
-								placeholderFor={(k, prop) =>
+								placeholderFor={(k) =>
 									t(`agent-form.${sectionI18n}.${toKebab(k)}.placeholder`, {
-										defaultValue: prop.description ?? '',
+										defaultValue: '',
 									}) || undefined
 								}
-								// Only for fields whose label cannot carry the
-								// whole story on its own — hence no fallback to
-								// `prop.description`, which is English-only and
-								// already serves as the placeholder.
 								descriptionFor={(k) =>
 									t(`agent-form.${sectionI18n}.${toKebab(k)}.description`, {
 										defaultValue: '',
@@ -154,10 +150,26 @@ export function defaultAgentFormValues(schema: AgentSchemaV2Response): AgentForm
 		}
 		return out;
 	};
+	const identity = fromDefaults(sections.identity);
+	// Normalize legacy English schema defaults to Chinese.
+	if (
+		!identity.system_prompt ||
+		identity.system_prompt === "You're a helpful assistant."
+	) {
+		identity.system_prompt = '你是一个有帮助的助手。';
+	}
+	const react_config = fromDefaults(sections.react_config);
+	if (
+		!react_config.interruption_message ||
+		react_config.interruption_message ===
+			'I notice the interruption. How can I help you?'
+	) {
+		react_config.interruption_message = '我注意到你已中断。还有什么可以帮你的吗？';
+	}
 	return {
-		identity: fromDefaults(sections.identity),
+		identity,
 		context_config: fromDefaults(sections.context_config),
-		react_config: fromDefaults(sections.react_config),
+		react_config,
 		invite_config: fromDefaults(sections.invite_config),
 	};
 }

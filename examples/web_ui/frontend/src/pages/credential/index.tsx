@@ -1,7 +1,16 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, Plus, Trash2, Pen } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 
-import { credentialApi, embeddingModelApi, modelApi, ttsModelApi } from '@/api';
+import {
+	credentialApi,
+	customModelsApi,
+	embeddingModelApi,
+	modelApi,
+	ttsModelApi,
+	type CustomModelCard,
+} from '@/api';
 import type {
 	CredentialView,
 	CredentialSchema,
@@ -14,7 +23,17 @@ import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditCredentialDialog } from '@/components/dialog/EditCredentialDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import {
 	Sidebar,
@@ -37,8 +56,10 @@ import {
 	TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AVAILABLE_MODELS_KEY } from '@/hooks/useAvailableModels';
 import { useCredentials } from '@/hooks/useCredentials';
 import { useTranslation } from '@/i18n/useI18n';
+import { credentialUsesManualModels } from '@/lib/credential-models';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/utils/common.ts';
 
@@ -46,7 +67,11 @@ import { formatNumber } from '@/utils/common.ts';
 type ModelTab = 'llm' | 'tts' | 'embedding';
 
 /** A row in the model table — one of the three card shapes. */
-type ModelRow = ModelCard | TTSModelCard | EmbeddingModelCard;
+type ModelRow = ModelCard | TTSModelCard | EmbeddingModelCard | CustomModelCard;
+
+function isCustomModel(model: ModelRow): model is CustomModelCard {
+	return 'custom' in model && model.custom === true;
+}
 
 // ─── Masked value ─────────────────────────────────────────────────────────────
 
@@ -110,7 +135,7 @@ function ModelTag({ children }: { children: React.ReactNode }) {
 	);
 }
 
-function HeadCell({ children }: { children: React.ReactNode }) {
+function HeadCell({ children }: { children?: React.ReactNode }) {
 	return (
 		<TableHead className="h-auto bg-muted px-4 py-2.25 font-mono text-[9.5px] font-normal tracking-widest uppercase text-text-tertiary">
 			{children}
@@ -137,6 +162,10 @@ interface ModelTableProps {
 	models: ModelRow[];
 	/** Drives which numeric columns sit between MODEL and ACCEPTS. */
 	variant: ModelTab;
+	/** Remove a user-defined custom model (LLM tab only). */
+	onDeleteCustom?: (modelName: string) => void;
+	/** Whether the viewer may manage custom models. */
+	canManageCustom?: boolean;
 }
 
 /**
@@ -147,10 +176,11 @@ interface ModelTableProps {
  * @param variant - Which column set applies.
  * @returns The bordered table plus its legend.
  */
-function ModelTable({ models, variant }: ModelTableProps) {
+function ModelTable({ models, variant, onDeleteCustom, canManageCustom }: ModelTableProps) {
 	const { t } = useTranslation();
 	const isChat = variant === 'llm';
 	const isEmbedding = variant === 'embedding';
+	const showActions = isChat && !!onDeleteCustom;
 
 	return (
 		<div>
@@ -166,6 +196,7 @@ function ModelTable({ models, variant }: ModelTableProps) {
 							{isEmbedding && <HeadCell>{t('credential.table.dimensions')}</HeadCell>}
 							<HeadCell>{t('credential.table.accepts')}</HeadCell>
 							<HeadCell>{t('credential.table.outputs')}</HeadCell>
+							{showActions && <HeadCell />}
 						</TableRow>
 					</TableHeader>
 					<TableBody>
@@ -174,6 +205,7 @@ function ModelTable({ models, variant }: ModelTableProps) {
 							const embed = isEmbedding ? (model as EmbeddingModelCard) : null;
 							const tts = variant === 'tts' ? (model as TTSModelCard) : null;
 							const context = chat?.context_size ?? embed?.context_size;
+							const custom = isCustomModel(model);
 							return (
 								<TableRow
 									key={model.name}
@@ -187,6 +219,9 @@ function ModelTable({ models, variant }: ModelTableProps) {
 											>
 												{model.label || model.name}
 											</span>
+											{custom && (
+												<ModelTag>{t('credential.customTag')}</ModelTag>
+											)}
 											{model.input_types.includes(THINKING_TYPE) && (
 												<ModelTag>{t('credential.reasoning')}</ModelTag>
 											)}
@@ -219,6 +254,21 @@ function ModelTable({ models, variant }: ModelTableProps) {
 									<DataCell size="11">
 										{modalities(model.output_types).join(' · ') || '—'}
 									</DataCell>
+									{showActions && (
+										<TableCell className="px-2 py-1.5 w-10">
+											{custom && canManageCustom && (
+												<Button
+													size="icon-xs"
+													variant="ghost"
+													className="text-text-tertiary hover:text-destructive"
+													onClick={() => onDeleteCustom?.(model.name)}
+													title={t('common.delete')}
+												>
+													<Trash2 className="size-3.5" />
+												</Button>
+											)}
+										</TableCell>
+									)}
 								</TableRow>
 							);
 						})}
@@ -243,44 +293,106 @@ interface DetailPanelProps {
 
 function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps) {
 	const { t } = useTranslation();
-	const [models, setModels] = useState<ModelCard[]>([]);
+	const queryClient = useQueryClient();
+	const [models, setModels] = useState<ModelRow[]>([]);
 	const [ttsModels, setTtsModels] = useState<TTSModelCard[]>([]);
 	const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelCard[]>([]);
 	const [modelsLoading, setModelsLoading] = useState(false);
 	const [tab, setTab] = useState<ModelTab>('llm');
+	const [addOpen, setAddOpen] = useState(false);
+	const [modelId, setModelId] = useState('');
+	const [modelLabel, setModelLabel] = useState('');
+	const [saving, setSaving] = useState(false);
 
 	const type = credential.data.type as string | undefined;
+	const manualOnly = credentialUsesManualModels(credential);
 	const shown = tab === 'llm' ? models : tab === 'tts' ? ttsModels : embeddingModels;
 	const total = models.length + ttsModels.length + embeddingModels.length;
+
+	const reloadModels = useCallback(async () => {
+		if (!type) return;
+		setModelsLoading(true);
+		try {
+			const customOnly = credentialUsesManualModels(credential);
+			const [builtin, custom, tts, embeddings] = await Promise.all([
+				customOnly
+					? Promise.resolve([] as ModelCard[])
+					: modelApi
+							.list(type)
+							.then((res) => res.models)
+							.catch(() => [] as ModelCard[]),
+				customModelsApi.list(credential.id).catch(() => [] as CustomModelCard[]),
+				customOnly
+					? Promise.resolve([] as TTSModelCard[])
+					: ttsModelApi
+							.list(type)
+							.then((res) => res.models)
+							.catch(() => [] as TTSModelCard[]),
+				customOnly
+					? Promise.resolve([] as EmbeddingModelCard[])
+					: embeddingModelApi
+							.list(type)
+							.then((res) => res.models)
+							.catch(() => [] as EmbeddingModelCard[]),
+			]);
+			const customNames = new Set(custom.map((m) => m.name));
+			setModels([
+				...custom.map((m) => ({ ...m, custom: true as const })),
+				...builtin.filter((m) => !customNames.has(m.name)),
+			]);
+			setTtsModels(tts);
+			setEmbeddingModels(embeddings);
+			if (customOnly) setTab('llm');
+		} finally {
+			setModelsLoading(false);
+		}
+	}, [credential, type]);
 
 	// A credential switch can land on a provider with no TTS models at
 	// all, which would leave the tab pointing at an empty list.
 	useEffect(() => setTab('llm'), [credential.id]);
 
 	useEffect(() => {
-		if (!type) return;
-		setModelsLoading(true);
-		Promise.all([
-			modelApi
-				.list(type)
-				.then((res) => res.models)
-				.catch(() => [] as ModelCard[]),
-			ttsModelApi
-				.list(type)
-				.then((res) => res.models)
-				.catch(() => [] as TTSModelCard[]),
-			embeddingModelApi
-				.list(type)
-				.then((res) => res.models)
-				.catch(() => [] as EmbeddingModelCard[]),
-		])
-			.then(([chatModels, tts, embeddings]) => {
-				setModels(chatModels);
-				setTtsModels(tts);
-				setEmbeddingModels(embeddings);
-			})
-			.finally(() => setModelsLoading(false));
-	}, [credential.id, type]);
+		void reloadModels();
+	}, [reloadModels]);
+
+	const invalidatePickers = async () => {
+		await queryClient.invalidateQueries({ queryKey: AVAILABLE_MODELS_KEY });
+	};
+
+	const handleAddCustom = async (e: React.FormEvent) => {
+		e.preventDefault();
+		const name = modelId.trim();
+		if (!name) return;
+		setSaving(true);
+		try {
+			await customModelsApi.add(credential.id, {
+				name,
+				label: modelLabel.trim() || name,
+			});
+			setAddOpen(false);
+			setModelId('');
+			setModelLabel('');
+			await reloadModels();
+			await invalidatePickers();
+			toast.success(t('credential.customAdded'));
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : t('common.error'));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const handleDeleteCustom = async (name: string) => {
+		try {
+			await customModelsApi.remove(credential.id, name);
+			await reloadModels();
+			await invalidatePickers();
+			toast.success(t('credential.customRemoved'));
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : t('common.error'));
+		}
+	};
 
 	// Fields to display: use schema properties order, skip id/type/const fields
 	const displayFields = schema
@@ -380,49 +492,58 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 					onValueChange={(v) => setTab(v as ModelTab)}
 					className="gap-0 px-[18px] pb-6"
 				>
-					<div className="mt-[30px] mb-3 flex items-center justify-between">
+					<div className="mt-[30px] mb-3 flex items-center justify-between gap-2">
 						<span className="flex items-center gap-x-2 text-[13.5px] font-medium text-foreground">
 							{t('credential.availableModels')}
 							<span className="font-mono text-[11px] text-text-data">{total}</span>
 						</span>
-						{/* Only worth a switch when there is a second list to switch to. */}
-						{(ttsModels.length > 0 || embeddingModels.length > 0) && (
-							<TabsList className="bg-surface-muted">
-								{/* Only the shadow is overridden here; the stock one
-							    is shadow-sm. */}
-								<TabsTrigger
-									value="llm"
-									className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+						<div className="flex items-center gap-2">
+							{credential.editable && (
+								<Button
+									size="sm"
+									variant="outline"
+									onClick={() => setAddOpen(true)}
 								>
-									{t('common.llm')}
-									<span className="font-mono text-[10px] text-text-data">
-										{models.length}
-									</span>
-								</TabsTrigger>
-								{ttsModels.length > 0 && (
+									<Plus className="size-3.5" />
+									{t('credential.addCustomModel')}
+								</Button>
+							)}
+							{!manualOnly && (ttsModels.length > 0 || embeddingModels.length > 0) && (
+								<TabsList className="bg-surface-muted">
 									<TabsTrigger
-										value="tts"
+										value="llm"
 										className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
 									>
-										{t('common.tts')}
+										{t('common.llm')}
 										<span className="font-mono text-[10px] text-text-data">
-											{ttsModels.length}
+											{models.length}
 										</span>
 									</TabsTrigger>
-								)}
-								{embeddingModels.length > 0 && (
-									<TabsTrigger
-										value="embedding"
-										className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
-									>
-										{t('common.embedding')}
-										<span className="font-mono text-[10px] text-text-data">
-											{embeddingModels.length}
-										</span>
-									</TabsTrigger>
-								)}
-							</TabsList>
-						)}
+									{ttsModels.length > 0 && (
+										<TabsTrigger
+											value="tts"
+											className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+										>
+											{t('common.tts')}
+											<span className="font-mono text-[10px] text-text-data">
+												{ttsModels.length}
+											</span>
+										</TabsTrigger>
+									)}
+									{embeddingModels.length > 0 && (
+										<TabsTrigger
+											value="embedding"
+											className="px-2.5 text-[11.5px] text-muted-foreground group-data-[variant=default]/tabs-list:data-active:shadow-tab!"
+										>
+											{t('common.embedding')}
+											<span className="font-mono text-[10px] text-text-data">
+												{embeddingModels.length}
+											</span>
+										</TabsTrigger>
+									)}
+								</TabsList>
+							)}
+						</div>
 					</div>
 
 					{modelsLoading ? (
@@ -432,14 +553,21 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 							<EmptyHeader>
 								<EmptyTitle>{t('credential.noModels')}</EmptyTitle>
 								<EmptyDescription>
-									{t('credential.noModelsDescription')}
+									{credential.editable
+										? t('credential.noModelsCustomHint')
+										: t('credential.noModelsDescription')}
 								</EmptyDescription>
 							</EmptyHeader>
 						</Empty>
 					) : (
 						<>
 							<TabsContent value="llm">
-								<ModelTable models={models} variant="llm" />
+								<ModelTable
+									models={models}
+									variant="llm"
+									canManageCustom={credential.editable}
+									onDeleteCustom={handleDeleteCustom}
+								/>
 							</TabsContent>
 							<TabsContent value="tts">
 								<ModelTable models={ttsModels} variant="tts" />
@@ -451,6 +579,57 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 					)}
 				</Tabs>
 			</div>
+
+			<Dialog open={addOpen} onOpenChange={setAddOpen}>
+				<DialogContent>
+					<form onSubmit={handleAddCustom}>
+						<DialogHeader>
+							<DialogTitle>{t('credential.addCustomModelTitle')}</DialogTitle>
+							<DialogDescription>
+								{t('credential.addCustomModelDescription')}
+							</DialogDescription>
+						</DialogHeader>
+						<div className="flex flex-col gap-3 py-2">
+							<Field>
+								<FieldLabel htmlFor="custom-model-id">
+									{t('credential.customModelId')}
+								</FieldLabel>
+								<Input
+									id="custom-model-id"
+									value={modelId}
+									onChange={(e) => setModelId(e.target.value)}
+									placeholder={t('credential.customModelPlaceholder')}
+									required
+									autoFocus
+								/>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="custom-model-label">
+									{t('credential.customModelLabel')}
+								</FieldLabel>
+								<Input
+									id="custom-model-label"
+									value={modelLabel}
+									onChange={(e) => setModelLabel(e.target.value)}
+									placeholder={t('credential.customModelLabelPlaceholder')}
+								/>
+							</Field>
+						</div>
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => setAddOpen(false)}
+							>
+								{t('common.cancel')}
+							</Button>
+							<Button type="submit" disabled={saving || !modelId.trim()}>
+								{saving ? t('common.saving') : t('common.add')}
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

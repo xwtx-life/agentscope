@@ -166,3 +166,16 @@ yarn-error.log*
 lerna-debug.log*
 
 **/workspaces/
+
+# Local v0.1 reference tree — never commit
+_v01_bundle/
+
+# Local deploy secrets / machine env (keep *.example)
+.env.v02
+deploy/docker/.env.v02
+
+# Built overlay image archives (too large for git)
+deploy/*.tar
+deploy/*.tar.gz
+deploy/*.sha256
+deploy/**/*.legacy.tar

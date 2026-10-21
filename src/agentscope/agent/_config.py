@@ -394,7 +394,7 @@ class ReActConfig(BaseModel):
 
     interruption_message: str = Field(
         title="Interruption Message",
-        default="I notice the interruption. How can I help you?",
+        default="我注意到你已中断。还有什么可以帮你的吗？",
         description="The quick reply message when interrupted.",
     )
     """The interruption message."""

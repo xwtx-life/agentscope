@@ -12,9 +12,6 @@ from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.storage import RedisStorage
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 
-HEADERS = {"X-User-ID": "alice"}
-
-
 def _fake_backends() -> tuple:
     """Build a fakeredis-backed storage and message bus."""
     redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
@@ -59,7 +56,7 @@ class HealthRouterTest(IsolatedAsyncioTestCase):
 
     def test_health_reports_ok_once_started(self) -> None:
         """A fully started app reports ok with its configured version."""
-        response = self._client.get("/health", headers=HEADERS)
+        response = self._client.get("/health")
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -71,15 +68,15 @@ class HealthRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(body["components"]["storage"], "ok")
         self.assertEqual(body["components"]["chat_service"], "ok")
 
-    def test_health_requires_user_id(self) -> None:
-        """The endpoint is not exempt from the X-User-ID requirement."""
+    def test_health_is_public(self) -> None:
+        """The readiness probe does not require authentication."""
         response = self._client.get("/health")
 
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 200)
 
     def test_disabled_features_do_not_break_health(self) -> None:
         """An unconfigured optional feature reads as disabled, not down."""
-        body = self._client.get("/health", headers=HEADERS).json()
+        body = self._client.get("/health").json()
 
         self.assertEqual(body["components"]["knowledge_base"], "disabled")
         self.assertEqual(body["components"]["mcp_hubs"], "disabled")
@@ -101,7 +98,7 @@ class HealthRouterTest(IsolatedAsyncioTestCase):
                 enable_index_worker=False,
             )
             # No `with`: the lifespan never runs, mimicking a bare mount.
-            response = TestClient(app).get("/health", headers=HEADERS)
+            response = TestClient(app).get("/health")
 
         self.assertEqual(response.status_code, 503)
         body = response.json()

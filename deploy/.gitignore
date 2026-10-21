@@ -1,0 +1,4 @@
+# Offline image packs live next to docker/, not inside it.
+*.tar
+*.tar.sha256
+*.tgz

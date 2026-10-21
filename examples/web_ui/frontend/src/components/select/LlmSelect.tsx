@@ -51,6 +51,7 @@ export function LlmSelect({
 }: Props) {
 	const { groups, loading } = useAvailableModels();
 	const { t } = useTranslation();
+
 	// Credentials whose model list failed to load come back with an empty
 	// `models` array; drop them so they don't render empty submenus
 	const groupEntries = Object.entries(groups)

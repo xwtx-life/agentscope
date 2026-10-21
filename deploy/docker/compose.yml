@@ -1,0 +1,232 @@
+# Greenfield full stack only. If v0.1 is already running on this host, do NOT
+# use this file — use compose.v02-parallel.yml + *-v02.sh instead.
+name: agentscope-stack
+
+services:
+  agentscope-api:
+    image: ${AGENTSCOPE_API_IMAGE:-local/agentscope-api:current}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/agentscope-api.Dockerfile
+    restart: unless-stopped
+    environment:
+      AGENTSCOPE_ENV: ${AGENTSCOPE_ENV:-development}
+      AGENTSCOPE_JWT_SECRET: ${AGENTSCOPE_JWT_SECRET:?set AGENTSCOPE_JWT_SECRET in .env}
+      AGENTSCOPE_SECRET_ENCRYPTION_KEY: ${AGENTSCOPE_SECRET_ENCRYPTION_KEY:?set AGENTSCOPE_SECRET_ENCRYPTION_KEY in .env}
+      AGENTSCOPE_CORS_ORIGINS: ${AGENTSCOPE_CORS_ORIGINS:-http://127.0.0.1:18080}
+      AGENTSCOPE_SECURE_COOKIES: ${AGENTSCOPE_SECURE_COOKIES:-false}
+      AGENTSCOPE_REDIS_HOST: agentscope-redis
+      AGENTSCOPE_REDIS_PORT: 6379
+      AGENTSCOPE_REDIS_DB: ${AGENTSCOPE_REDIS_DB:-0}
+      AGENTSCOPE_REDIS_PASSWORD: ${AGENTSCOPE_REDIS_PASSWORD:-}
+      REDIS_HOST: agentscope-redis
+      REDIS_PORT: "6379"
+      AGENTSCOPE_MESSAGE_BUS: redis
+      AGENTSCOPE_QDRANT_URL: http://qdrant:6333
+      AGENTSCOPE_WORKSPACE_ROOT: /var/lib/agentscope/workspaces
+      AGENTSCOPE_BLOB_ROOT: /var/lib/agentscope/blobs
+      AGENTSCOPE_SKILL_SUBMISSION_ROOT: /var/lib/agentscope/skill_submissions
+      AMAP_API_KEY: ${AMAP_API_KEY:-}
+      CLAWHUB_API_TOKEN: ${CLAWHUB_API_TOKEN:-}
+      AGENTSCOPE_SKILLHUB_URL: ${AGENTSCOPE_SKILLHUB_URL:-http://skillhub-server:8080}
+      AGENTSCOPE_SKILLHUB_TOKEN: ${AGENTSCOPE_SKILLHUB_TOKEN:-}
+    expose:
+      - "8000"
+    volumes:
+      - agentscope_workspaces:/var/lib/agentscope/workspaces
+      - agentscope_blobs:/var/lib/agentscope/blobs
+      - agentscope_skill_submissions:/var/lib/agentscope/skill_submissions
+    depends_on:
+      agentscope-redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      skillhub-server:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 10
+
+  agentscope-web:
+    image: ${AGENTSCOPE_WEB_IMAGE:-local/agentscope-web:current}
+    build:
+      context: ../..
+      dockerfile: deploy/docker/agentscope-web.Dockerfile
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      agentscope-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  agentscope-redis:
+    image: ${AGENTSCOPE_REDIS_IMAGE:-redis:7-alpine}
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - agentscope_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.14.1}
+    restart: unless-stopped
+    expose:
+      - "6333"
+    volumes:
+      - agentscope_qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "/qdrant/qdrant", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  skillhub-postgres:
+    image: ${SKILLHUB_POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SKILLHUB_POSTGRES_DB:-skillhub}
+      POSTGRES_USER: ${SKILLHUB_POSTGRES_USER:-skillhub}
+      POSTGRES_PASSWORD: ${SKILLHUB_POSTGRES_PASSWORD:?set SKILLHUB_POSTGRES_PASSWORD in .env}
+    volumes:
+      - skillhub_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U ${SKILLHUB_POSTGRES_USER:-skillhub} -d ${SKILLHUB_POSTGRES_DB:-skillhub}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  skillhub-redis:
+    image: ${SKILLHUB_REDIS_IMAGE:-redis:7-alpine}
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - skillhub_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  skillhub-scanner:
+    image: ${SKILLHUB_SCANNER_IMAGE:-ghcr.io/iflytek/skillhub-scanner:v0.2.14}
+    restart: unless-stopped
+    environment:
+      SKILL_SCANNER_LLM_API_KEY: ${SKILL_SCANNER_LLM_API_KEY:-}
+      SKILL_SCANNER_LLM_BASE_URL: ${SKILL_SCANNER_LLM_BASE_URL:-}
+      SKILL_SCANNER_LLM_MODEL: ${SKILL_SCANNER_LLM_MODEL:-}
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  skillhub-server:
+    image: ${SKILLHUB_SERVER_IMAGE:-ghcr.io/iflytek/skillhub-server:v0.2.14}
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://skillhub-postgres:5432/${SKILLHUB_POSTGRES_DB:-skillhub}
+      SPRING_DATASOURCE_USERNAME: ${SKILLHUB_POSTGRES_USER:-skillhub}
+      SPRING_DATASOURCE_PASSWORD: ${SKILLHUB_POSTGRES_PASSWORD:?set SKILLHUB_POSTGRES_PASSWORD in .env}
+      SPRING_DATA_REDIS_HOST: skillhub-redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SESSION_COOKIE_SECURE: ${SKILLHUB_SESSION_COOKIE_SECURE:-false}
+      SKILLHUB_PUBLIC_BASE_URL: ${SKILLHUB_PUBLIC_BASE_URL:-http://127.0.0.1:18081}
+      SKILLHUB_DOWNLOAD_ANON_COOKIE_SECRET: ${SKILLHUB_DOWNLOAD_ANON_COOKIE_SECRET:?set SKILLHUB_DOWNLOAD_ANON_COOKIE_SECRET in .env}
+      SKILLHUB_STORAGE_PROVIDER: local
+      STORAGE_BASE_PATH: /var/lib/skillhub/storage
+      SKILLHUB_SECURITY_SCANNER_ENABLED: ${SKILLHUB_SECURITY_SCANNER_ENABLED:-true}
+      SKILLHUB_SECURITY_SCANNER_URL: http://skillhub-scanner:8000
+      SKILLHUB_SECURITY_SCANNER_MODE: upload
+      SKILLHUB_BUILTIN_SKILLS_ENABLED: ${SKILLHUB_BUILTIN_SKILLS_ENABLED:-true}
+      SKILLHUB_AUTH_DIRECT_ENABLED: ${SKILLHUB_AUTH_DIRECT_ENABLED:-false}
+      SKILLHUB_TRACING_MODE: ${SKILLHUB_TRACING_MODE:-none}
+      SKILLHUB_LOG_FORMAT: ${SKILLHUB_LOG_FORMAT:-json}
+      BOOTSTRAP_ADMIN_ENABLED: ${BOOTSTRAP_ADMIN_ENABLED:-true}
+      BOOTSTRAP_ADMIN_USER_ID: ${BOOTSTRAP_ADMIN_USER_ID:-docker-admin}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?set BOOTSTRAP_ADMIN_PASSWORD in .env}
+      BOOTSTRAP_ADMIN_DISPLAY_NAME: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:-Admin}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@skillhub.local}
+      OAUTH2_GITHUB_CLIENT_ID: ${OAUTH2_GITHUB_CLIENT_ID:-local-placeholder}
+      OAUTH2_GITHUB_CLIENT_SECRET: ${OAUTH2_GITHUB_CLIENT_SECRET:-local-placeholder}
+    expose:
+      - "8080"
+    volumes:
+      - skillhub_storage:/var/lib/skillhub/storage
+    depends_on:
+      skillhub-postgres:
+        condition: service_healthy
+      skillhub-redis:
+        condition: service_healthy
+      skillhub-scanner:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 12
+
+  skillhub-web:
+    image: ${SKILLHUB_WEB_IMAGE:-ghcr.io/iflytek/skillhub-web:v0.2.14}
+    restart: unless-stopped
+    environment:
+      SKILLHUB_API_UPSTREAM: http://skillhub-server:8080
+      SKILLHUB_WEB_API_BASE_URL: ${SKILLHUB_WEB_API_BASE_URL:-}
+      SKILLHUB_PUBLIC_BASE_URL: ${SKILLHUB_PUBLIC_BASE_URL:-http://127.0.0.1:18081}
+      SKILLHUB_TRUST_FORWARDED_PROTO: ${SKILLHUB_TRUST_FORWARDED_PROTO:-false}
+    expose:
+      - "80"
+    depends_on:
+      skillhub-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  gateway:
+    image: ${GATEWAY_IMAGE:-nginx:1.27-alpine}
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_HTTP_PORT:-80}:80"
+      - "${SKILLHUB_HTTP_PORT:-18081}:81"
+    volumes:
+      - ./gateway.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      agentscope-web:
+        condition: service_healthy
+      skillhub-web:
+        condition: service_healthy
+
+volumes:
+  agentscope_workspaces:
+  agentscope_blobs:
+  agentscope_skill_submissions:
+  agentscope_redis:
+  agentscope_qdrant:
+  skillhub_postgres:
+  skillhub_redis:
+  skillhub_storage:

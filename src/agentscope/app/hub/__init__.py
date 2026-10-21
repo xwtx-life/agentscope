@@ -16,6 +16,11 @@ from ._skill import (
     SkillCard,
     SkillHubPage,
     ClawSkillHub,
+    IFlytekSkillHub,
+    SkillHubConnection,
+    SkillHubConnectionResolutionError,
+    SkillHubConnectionResolver,
+    SkillPublishResult,
 )
 
 __all__ = [
@@ -30,4 +35,9 @@ __all__ = [
     "SkillCard",
     "SkillHubPage",
     "ClawSkillHub",
+    "IFlytekSkillHub",
+    "SkillHubConnection",
+    "SkillHubConnectionResolutionError",
+    "SkillHubConnectionResolver",
+    "SkillPublishResult",
 ]
